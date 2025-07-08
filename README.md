@@ -1,50 +1,90 @@
-# Welcome to your Expo app 👋
+# Bagirata Android
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplikasi pengelola pengeluaran pribadi berbasis React Native yang dibuat menggunakan Expo. Aplikasi ini adalah versi Android dari aplikasi iOS Bagirata yang dibuat dengan Swift.
 
-## Get started
+## Fitur Utama
 
-1. Install dependencies
+- **Dashboard Beranda**: Melihat ringkasan pengeluaran dan transaksi terbaru
+- **Scan Struk**: Mensimulasikan pemindaian struk belanja (menggunakan data mock)
+- **Laporan Pengeluaran**: Melihat riwayat transaksi dengan tampilan berdasarkan:
+  - Daftar struk
+  - Pengeluaran bulanan
+  - Kategori pengeluaran
+- **Profil Pengguna**: Mengatur profil dan preferensi aplikasi
+
+## Teknologi yang Digunakan
+
+- **Expo Router**: Untuk navigasi berbasis file system
+- **React Native**: Framework untuk pengembangan mobile
+- **TypeScript**: Untuk type safety dan developer experience yang lebih baik
+- **Expo**: Platform untuk pengembangan React Native
+
+## Struktur Aplikasi
+
+```
+app/
+├── (tabs)/
+│   ├── index.tsx       # Beranda/Dashboard
+│   ├── scan.tsx        # Halaman scan struk
+│   ├── expenses.tsx    # Laporan pengeluaran
+│   └── profile.tsx     # Profil pengguna
+components/
+├── ReceiptCard.tsx     # Komponen kartu struk
+└── ...                 # Komponen lainnya
+services/
+└── DataService.ts      # Service untuk data mock
+types/
+└── index.ts           # Type definitions
+```
+
+## Perbedaan dengan Versi Swift
+
+### Yang Sama:
+
+- Struktur navigasi tab
+- Konsep split bill dan manajemen pengeluaran
+- UI/UX yang mirip dengan desain iOS
+
+### Yang Berbeda:
+
+- **OCR Vision**: Versi Swift menggunakan Apple's Vision framework untuk OCR, sedangkan versi Android menggunakan data simulasi
+- **Data Storage**: Versi Swift menggunakan SwiftData, versi Android menggunakan in-memory storage dengan data mock
+- **Platform**: iOS vs Android dengan komponen React Native
+
+## Data Mock
+
+Aplikasi menggunakan data simulasi untuk:
+
+- Struk belanja dari berbagai toko
+- Pengeluaran bulanan
+- Kategorisasi otomatis berdasarkan nama toko
+- Simulasi proses OCR scanning
+
+## Cara Menjalankan
+
+1. Install dependencies:
 
    ```bash
    npm install
    ```
 
-2. Start the app
+2. Start development server:
 
    ```bash
-   npx expo start
+   npm start
    ```
 
-In the output, you'll find options to open the app in a
+3. Scan QR code dengan Expo Go app di Android device atau jalankan di emulator
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Pengembangan Selanjutnya
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- Implementasi OCR menggunakan library seperti react-native-text-recognition
+- Integrasi dengan database lokal (SQLite) atau cloud storage
+- Fitur sync data antar device
+- Notifikasi dan reminder
+- Export data ke Excel/PDF
+- Fitur split bill dengan teman
 
-## Get a fresh project
+## Catatan
 
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Aplikasi ini dibuat sebagai translasi dari aplikasi Swift Bagirata ke React Native, dengan fokus pada struktur dan fungsi yang sama namun menggunakan teknologi cross-platform.
