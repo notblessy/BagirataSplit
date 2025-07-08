@@ -174,9 +174,10 @@ export class DatabaseService {
       values
     );
 
-    const result = await this.db.getFirstAsync("SELECT * FROM friends WHERE id = ?", [
-      id,
-    ]);
+    const result = await this.db.getFirstAsync(
+      "SELECT * FROM friends WHERE id = ?",
+      [id]
+    );
     if (!result) return undefined;
 
     return {
@@ -192,7 +193,9 @@ export class DatabaseService {
     await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
-    const result = await this.db.runAsync("DELETE FROM friends WHERE id = ?", [id]);
+    const result = await this.db.runAsync("DELETE FROM friends WHERE id = ?", [
+      id,
+    ]);
     return result.changes > 0;
   }
 
@@ -304,7 +307,9 @@ export class DatabaseService {
     await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
-    const result = await this.db.getFirstAsync("SELECT * FROM friends WHERE me = 1");
+    const result = await this.db.getFirstAsync(
+      "SELECT * FROM friends WHERE me = 1"
+    );
 
     if (!result) return null;
 
