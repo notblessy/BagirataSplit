@@ -15,6 +15,7 @@ interface UserProfileContextType {
   updateUserProfile: (
     updates: Partial<Omit<Friend, "id" | "createdAt">>
   ) => Promise<boolean>;
+  needsProfileSetup: boolean;
 }
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(
@@ -37,15 +38,17 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({
   children,
 }) => {
   const [userProfile, setUserProfile] = useState<Friend | null>(null);
+  const [needsProfileSetup, setNeedsProfileSetup] = useState<boolean>(false);
 
   const refreshUserProfile = async () => {
     try {
       await DatabaseService.initializeDatabase();
-      const friends = DatabaseService.getAllFriends();
-      const profile = friends.find((friend: Friend) => friend.me) || null;
+      const profile = await DatabaseService.getUserProfile();
       setUserProfile(profile);
+      setNeedsProfileSetup(!(await DatabaseService.hasUserProfile()));
     } catch (error) {
       console.error("Error refreshing user profile:", error);
+      setNeedsProfileSetup(true);
     }
   };
 
@@ -54,14 +57,17 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({
   ) => {
     try {
       if (userProfile) {
-        const updated = DatabaseService.updateFriend(userProfile.id, updates);
+        const updated = await DatabaseService.updateFriend(
+          userProfile.id,
+          updates
+        );
         if (updated) {
           setUserProfile(updated);
           return true;
         }
       } else {
         // Create new profile
-        const newProfile = DatabaseService.addFriend({
+        const newProfile = await DatabaseService.addFriend({
           ...updates,
           me: true,
           name: updates.name || "User",
@@ -70,6 +76,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({
         });
         if (newProfile) {
           setUserProfile(newProfile);
+          setNeedsProfileSetup(false); // Profile created, no longer needs setup
           return true;
         }
       }
@@ -89,6 +96,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({
     setUserProfile,
     refreshUserProfile,
     updateUserProfile,
+    needsProfileSetup,
   };
 
   return (

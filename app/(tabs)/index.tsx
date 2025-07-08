@@ -21,8 +21,12 @@ import { Friend, Splitted } from "../../types";
 export default function HistoryScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
-  const { userProfile, refreshUserProfile, updateUserProfile } =
-    useUserProfile();
+  const {
+    userProfile,
+    refreshUserProfile,
+    updateUserProfile,
+    needsProfileSetup,
+  } = useUserProfile();
 
   const [allSplittedBills, setAllSplittedBills] = useState<Splitted[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -34,13 +38,13 @@ export default function HistoryScreen() {
     const initializeData = async () => {
       try {
         await DatabaseService.initializeDatabase();
-        const bills = DatabaseService.getAllSplittedBills();
+        const bills = await DatabaseService.getAllSplittedBills();
         await refreshUserProfile();
 
         setAllSplittedBills(bills);
 
-        // Show profile sheet on first load if no user profile exists
-        if (!userProfile) {
+        // Show profile sheet only if user needs profile setup
+        if (needsProfileSetup) {
           setShowProfileSheet(true);
         }
       } catch (error) {
@@ -52,7 +56,7 @@ export default function HistoryScreen() {
     };
 
     initializeData();
-  }, [userProfile, refreshUserProfile]);
+  }, [userProfile, refreshUserProfile, needsProfileSetup]);
 
   const formatCurrency = (amount: number) => {
     return DatabaseService.formatCurrency(amount);

@@ -27,9 +27,13 @@ export default function FriendsScreen() {
     userProfile: myProfile,
     refreshUserProfile,
     updateUserProfile,
+    needsProfileSetup,
   } = useUserProfile();
 
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [friendSplitCounts, setFriendSplitCounts] = useState<
+    Record<string, number>
+  >({});
   const [newFriendName, setNewFriendName] = useState("");
   const [editingFriend, setEditingFriend] = useState<Friend | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -38,28 +42,38 @@ export default function FriendsScreen() {
   const loadData = useCallback(async () => {
     try {
       await DatabaseService.initializeDatabase();
-      const allFriends = DatabaseService.getAllFriends();
+      const allFriends = await DatabaseService.getAllFriends();
       await refreshUserProfile();
 
-      setFriends(allFriends.filter((friend: Friend) => !friend.me));
+      const nonMeFriends = allFriends.filter((friend: Friend) => !friend.me);
+      setFriends(nonMeFriends);
 
-      // If no profile exists, show profile creation modal
-      if (!myProfile) {
+      // Load split counts for each friend
+      const counts: Record<string, number> = {};
+      for (const friend of nonMeFriends) {
+        counts[friend.id] = await DatabaseService.getFriendSplitCount(
+          friend.id
+        );
+      }
+      setFriendSplitCounts(counts);
+
+      // If profile setup is needed, show profile creation modal
+      if (needsProfileSetup) {
         setShowProfileSheet(true);
       }
     } catch (error) {
       console.error("Error loading friends:", error);
       Alert.alert("Error", "Failed to load friends. Please try again.");
     }
-  }, [myProfile, refreshUserProfile]);
+  }, [refreshUserProfile, needsProfileSetup]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const handleAddFriend = () => {
+  const handleAddFriend = async () => {
     if (newFriendName.trim()) {
-      const newFriend = DatabaseService.addFriend({
+      const newFriend = await DatabaseService.addFriend({
         name: newFriendName.trim(),
         me: false,
         accentColor: DatabaseService.getRandomAccentColor(),
@@ -78,11 +92,14 @@ export default function FriendsScreen() {
     setIsModalVisible(true);
   };
 
-  const handleUpdateFriend = () => {
+  const handleUpdateFriend = async () => {
     if (editingFriend && newFriendName.trim()) {
-      const updatedFriend = DatabaseService.updateFriend(editingFriend.id, {
-        name: newFriendName.trim(),
-      });
+      const updatedFriend = await DatabaseService.updateFriend(
+        editingFriend.id,
+        {
+          name: newFriendName.trim(),
+        }
+      );
       if (updatedFriend) {
         loadData();
         setNewFriendName("");
@@ -101,8 +118,8 @@ export default function FriendsScreen() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => {
-            const success = DatabaseService.deleteFriend(friend.id);
+          onPress: async () => {
+            const success = await DatabaseService.deleteFriend(friend.id);
             if (success) {
               loadData();
             } else {
@@ -146,7 +163,7 @@ export default function FriendsScreen() {
           {friend.name}
         </ThemedText>
         <ThemedText style={styles.friendStats}>
-          {DatabaseService.getFriendSplitCount(friend.id)} split bills together
+          {friendSplitCounts[friend.id] || 0} split bills together
         </ThemedText>
       </View>
 

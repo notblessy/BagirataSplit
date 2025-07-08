@@ -3,16 +3,48 @@ import { Friend, Splitted } from "../types";
 
 export class DatabaseService {
   private static db: SQLite.SQLiteDatabase | null = null;
+  private static isInitialized: boolean = false;
+  private static initializationPromise: Promise<void> | null = null;
 
   // Initialize database
   static async initializeDatabase(): Promise<void> {
+    // If already initialized, return immediately
+    if (this.isInitialized && this.db) {
+      return;
+    }
+
+    // If initialization is in progress, wait for it
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
+
+    // Start initialization
+    this.initializationPromise = this._doInitialization();
+    return this.initializationPromise;
+  }
+
+  private static async _doInitialization(): Promise<void> {
     try {
-      this.db = SQLite.openDatabaseSync("splitbill.db");
+      if (!this.db) {
+        // Use async database opening which is more reliable on Android
+        this.db = await SQLite.openDatabaseAsync("splitbill.db");
+      }
       await this.createTables();
       await this.seedInitialData();
+      this.isInitialized = true;
     } catch (error) {
       console.error("Error initializing database:", error);
+      this.db = null;
+      this.isInitialized = false;
+      this.initializationPromise = null;
       throw error;
+    }
+  }
+
+  // Ensure database is initialized before any operation
+  private static async ensureInitialized(): Promise<void> {
+    if (!this.isInitialized || !this.db) {
+      await this.initializeDatabase();
     }
   }
 
@@ -21,7 +53,7 @@ export class DatabaseService {
     if (!this.db) throw new Error("Database not initialized");
 
     // Friends table
-    this.db.execSync(`
+    await this.db.execAsync(`
       CREATE TABLE IF NOT EXISTS friends (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -32,7 +64,7 @@ export class DatabaseService {
     `);
 
     // Split bills table
-    this.db.execSync(`
+    await this.db.execAsync(`
       CREATE TABLE IF NOT EXISTS split_bills (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -41,7 +73,7 @@ export class DatabaseService {
     `);
 
     // Split bill friends (junction table)
-    this.db.execSync(`
+    await this.db.execAsync(`
       CREATE TABLE IF NOT EXISTS split_bill_friends (
         id TEXT PRIMARY KEY,
         splitBillId TEXT NOT NULL,
@@ -63,438 +95,20 @@ export class DatabaseService {
     if (!this.db) return;
 
     // Check if data already exists
-    const friendsCount = this.db.getFirstSync(
+    const friendsCount = await this.db.getFirstAsync(
       "SELECT COUNT(*) as count FROM friends"
     );
     if ((friendsCount as any)?.count > 0) return;
 
-    // Insert initial friends (no "me" profile - user will create their own)
-    const friends = [
-      {
-        id: "2",
-        name: "Jenny Russell",
-        me: 0,
-        accentColor: "#FF6B6B",
-        createdAt: new Date("2024-06-02").toISOString(),
-      },
-      {
-        id: "3",
-        name: "Alex Chen",
-        me: 0,
-        accentColor: "#4ECDC4",
-        createdAt: new Date("2024-06-03").toISOString(),
-      },
-      {
-        id: "4",
-        name: "Sarah Wilson",
-        me: 0,
-        accentColor: "#45B7D1",
-        createdAt: new Date("2024-06-04").toISOString(),
-      },
-      {
-        id: "5",
-        name: "Mike Johnson",
-        me: 0,
-        accentColor: "#96CEB4",
-        createdAt: new Date("2024-06-05").toISOString(),
-      },
-    ];
-
-    for (const friend of friends) {
-      this.db.runSync(
-        "INSERT INTO friends (id, name, me, accentColor, createdAt) VALUES (?, ?, ?, ?, ?)",
-        [
-          friend.id,
-          friend.name,
-          friend.me,
-          friend.accentColor,
-          friend.createdAt,
-        ]
-      );
-    }
-
-    // Insert split bills data
-    const splitBills = [
-      {
-        id: "1",
-        name: "Dinner at Local Restaurant",
-        createdAt: new Date("2024-12-15").toISOString(),
-      },
-      {
-        id: "2",
-        name: "Coffee Morning with Team",
-        createdAt: new Date("2024-12-14").toISOString(),
-      },
-      {
-        id: "3",
-        name: "Pizza Night",
-        createdAt: new Date("2024-12-13").toISOString(),
-      },
-      {
-        id: "4",
-        name: "Spotify Premium Subscription",
-        createdAt: new Date("2024-12-12").toISOString(),
-      },
-      {
-        id: "5",
-        name: "Weekend BBQ Party",
-        createdAt: new Date("2024-12-11").toISOString(),
-      },
-      {
-        id: "6",
-        name: "Lunch at Sushi Restaurant",
-        createdAt: new Date("2024-12-10").toISOString(),
-      },
-      {
-        id: "7",
-        name: "Movie Night Snacks",
-        createdAt: new Date("2024-12-09").toISOString(),
-      },
-      {
-        id: "8",
-        name: "Office Birthday Cake",
-        createdAt: new Date("2024-12-08").toISOString(),
-      },
-      {
-        id: "9",
-        name: "Gaming Tournament Drinks",
-        createdAt: new Date("2024-12-07").toISOString(),
-      },
-      {
-        id: "10",
-        name: "Breakfast Meeting",
-        createdAt: new Date("2024-12-06").toISOString(),
-      },
-    ];
-
-    for (const bill of splitBills) {
-      this.db.runSync(
-        "INSERT INTO split_bills (id, name, createdAt) VALUES (?, ?, ?)",
-        [bill.id, bill.name, bill.createdAt]
-      );
-    }
-
-    // Insert split bill friends data
-    const splitBillFriends = [
-      // Dinner at Local Restaurant (3 friends)
-      {
-        id: "1-1",
-        splitBillId: "1",
-        friendId: "2",
-        name: "Jenny Russell",
-        accentColor: "#FF6B6B",
-        total: 25000,
-        subTotal: 65000,
-        me: 0,
-        createdAt: new Date("2024-12-15").toISOString(),
-      },
-      {
-        id: "1-2",
-        splitBillId: "1",
-        friendId: "3",
-        name: "Alex Chen",
-        accentColor: "#4ECDC4",
-        total: 25000,
-        subTotal: 25000,
-        me: 0,
-        createdAt: new Date("2024-12-15").toISOString(),
-      },
-      {
-        id: "1-3",
-        splitBillId: "1",
-        friendId: "4",
-        name: "Sarah Wilson",
-        accentColor: "#45B7D1",
-        total: 25000,
-        subTotal: 25000,
-        me: 0,
-        createdAt: new Date("2024-12-15").toISOString(),
-      },
-
-      // Coffee Morning with Team (2 friends)
-      {
-        id: "2-1",
-        splitBillId: "2",
-        friendId: "2",
-        name: "Jenny Russell",
-        accentColor: "#FF6B6B",
-        total: 15000,
-        subTotal: 15000,
-        me: 0,
-        createdAt: new Date("2024-12-14").toISOString(),
-      },
-      {
-        id: "2-2",
-        splitBillId: "2",
-        friendId: "3",
-        name: "Alex Chen",
-        accentColor: "#4ECDC4",
-        total: 15000,
-        subTotal: 15000,
-        me: 0,
-        createdAt: new Date("2024-12-14").toISOString(),
-      },
-
-      // Pizza Night (4 friends)
-      {
-        id: "3-1",
-        splitBillId: "3",
-        friendId: "2",
-        name: "Jenny Russell",
-        accentColor: "#FF6B6B",
-        total: 30000,
-        subTotal: 30000,
-        me: 0,
-        createdAt: new Date("2024-12-13").toISOString(),
-      },
-      {
-        id: "3-2",
-        splitBillId: "3",
-        friendId: "3",
-        name: "Alex Chen",
-        accentColor: "#4ECDC4",
-        total: 30000,
-        subTotal: 30000,
-        me: 0,
-        createdAt: new Date("2024-12-13").toISOString(),
-      },
-      {
-        id: "3-3",
-        splitBillId: "3",
-        friendId: "4",
-        name: "Sarah Wilson",
-        accentColor: "#45B7D1",
-        total: 30000,
-        subTotal: 30000,
-        me: 0,
-        createdAt: new Date("2024-12-13").toISOString(),
-      },
-      {
-        id: "3-4",
-        splitBillId: "3",
-        friendId: "4",
-        name: "Sarah Wilson",
-        accentColor: "#45B7D1",
-        total: 30000,
-        subTotal: 30000,
-        me: 0,
-        createdAt: new Date("2024-12-13").toISOString(),
-      },
-
-      // Spotify Premium Subscription (4 friends)
-      {
-        id: "4-1",
-        splitBillId: "4",
-        friendId: "2",
-        name: "Jenny Russell",
-        accentColor: "#FF6B6B",
-        total: 16500,
-        subTotal: 16500,
-        me: 0,
-        createdAt: new Date("2024-12-12").toISOString(),
-      },
-      {
-        id: "4-2",
-        splitBillId: "4",
-        friendId: "3",
-        name: "Alex Chen",
-        accentColor: "#4ECDC4",
-        total: 16500,
-        subTotal: 16500,
-        me: 0,
-        createdAt: new Date("2024-12-12").toISOString(),
-      },
-      {
-        id: "4-3",
-        splitBillId: "4",
-        friendId: "4",
-        name: "Sarah Wilson",
-        accentColor: "#45B7D1",
-        total: 16500,
-        subTotal: 16500,
-        me: 0,
-        createdAt: new Date("2024-12-12").toISOString(),
-      },
-
-      // Weekend BBQ Party (3 friends)
-      {
-        id: "5-1",
-        splitBillId: "5",
-        friendId: "2",
-        name: "Jenny Russell",
-        accentColor: "#FF6B6B",
-        total: 40000,
-        subTotal: 40000,
-        me: 0,
-        createdAt: new Date("2024-12-11").toISOString(),
-      },
-      {
-        id: "5-2",
-        splitBillId: "5",
-        friendId: "3",
-        name: "Alex Chen",
-        accentColor: "#4ECDC4",
-        total: 40000,
-        subTotal: 40000,
-        me: 0,
-        createdAt: new Date("2024-12-11").toISOString(),
-      },
-
-      // Lunch at Sushi Restaurant (1 friend)
-      {
-        id: "6-1",
-        splitBillId: "6",
-        friendId: "2",
-        name: "Jenny Russell",
-        accentColor: "#FF6B6B",
-        total: 55000,
-        subTotal: 55000,
-        me: 0,
-        createdAt: new Date("2024-12-10").toISOString(),
-      },
-
-      // Movie Night Snacks (4 friends)
-      {
-        id: "7-1",
-        splitBillId: "7",
-        friendId: "2",
-        name: "Jenny Russell",
-        accentColor: "#FF6B6B",
-        total: 12000,
-        subTotal: 12000,
-        me: 0,
-        createdAt: new Date("2024-12-09").toISOString(),
-      },
-      {
-        id: "7-2",
-        splitBillId: "7",
-        friendId: "3",
-        name: "Alex Chen",
-        accentColor: "#4ECDC4",
-        total: 12000,
-        subTotal: 12000,
-        me: 0,
-        createdAt: new Date("2024-12-09").toISOString(),
-      },
-      {
-        id: "7-3",
-        splitBillId: "7",
-        friendId: "4",
-        name: "Sarah Wilson",
-        accentColor: "#45B7D1",
-        total: 12000,
-        subTotal: 12000,
-        me: 0,
-        createdAt: new Date("2024-12-09").toISOString(),
-      },
-      {
-        id: "7-4",
-        splitBillId: "7",
-        friendId: "5",
-        name: "Mike Johnson",
-        accentColor: "#96CEB4",
-        total: 12000,
-        subTotal: 12000,
-        me: 0,
-        createdAt: new Date("2024-12-09").toISOString(),
-      },
-
-      // Office Birthday Cake (2 friends)
-      {
-        id: "8-1",
-        splitBillId: "8",
-        friendId: "2",
-        name: "Jenny Russell",
-        accentColor: "#FF6B6B",
-        total: 8000,
-        subTotal: 8000,
-        me: 0,
-        createdAt: new Date("2024-12-08").toISOString(),
-      },
-      {
-        id: "8-2",
-        splitBillId: "8",
-        friendId: "3",
-        name: "Alex Chen",
-        accentColor: "#4ECDC4",
-        total: 8000,
-        subTotal: 8000,
-        me: 0,
-        createdAt: new Date("2024-12-08").toISOString(),
-      },
-
-      // Gaming Tournament Drinks (3 friends)
-      {
-        id: "9-1",
-        splitBillId: "9",
-        friendId: "2",
-        name: "Jenny Russell",
-        accentColor: "#FF6B6B",
-        total: 18000,
-        subTotal: 18000,
-        me: 0,
-        createdAt: new Date("2024-12-07").toISOString(),
-      },
-      {
-        id: "9-2",
-        splitBillId: "9",
-        friendId: "3",
-        name: "Alex Chen",
-        accentColor: "#4ECDC4",
-        total: 18000,
-        subTotal: 18000,
-        me: 0,
-        createdAt: new Date("2024-12-07").toISOString(),
-      },
-      {
-        id: "9-3",
-        splitBillId: "9",
-        friendId: "4",
-        name: "Sarah Wilson",
-        accentColor: "#45B7D1",
-        total: 18000,
-        subTotal: 18000,
-        me: 0,
-        createdAt: new Date("2024-12-07").toISOString(),
-      },
-
-      // Breakfast Meeting (1 friend)
-      {
-        id: "10-1",
-        splitBillId: "10",
-        friendId: "2",
-        name: "Jenny Russell",
-        accentColor: "#FF6B6B",
-        total: 22500,
-        subTotal: 22500,
-        me: 0,
-        createdAt: new Date("2024-12-06").toISOString(),
-      },
-    ];
-
-    for (const splitFriend of splitBillFriends) {
-      this.db.runSync(
-        "INSERT INTO split_bill_friends (id, splitBillId, friendId, name, accentColor, total, subTotal, me, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-          splitFriend.id,
-          splitFriend.splitBillId,
-          splitFriend.friendId,
-          splitFriend.name,
-          splitFriend.accentColor,
-          splitFriend.total,
-          splitFriend.subTotal,
-          splitFriend.me,
-          splitFriend.createdAt,
-        ]
-      );
-    }
+    // No initial seeding - users will create their own data
   }
 
   // Friends CRUD operations
-  static getAllFriends(): Friend[] {
+  static async getAllFriends(): Promise<Friend[]> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
-    const result = this.db.getAllSync(
+    const result = await this.db.getAllAsync(
       "SELECT * FROM friends ORDER BY createdAt DESC"
     );
     return result.map((row: any) => ({
@@ -506,13 +120,16 @@ export class DatabaseService {
     }));
   }
 
-  static addFriend(friend: Omit<Friend, "id" | "createdAt">): Friend {
+  static async addFriend(
+    friend: Omit<Friend, "id" | "createdAt">
+  ): Promise<Friend> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
     const id = Date.now().toString();
     const createdAt = new Date().toISOString();
 
-    this.db.runSync(
+    await this.db.runAsync(
       "INSERT INTO friends (id, name, me, accentColor, createdAt) VALUES (?, ?, ?, ?, ?)",
       [id, friend.name, friend.me ? 1 : 0, friend.accentColor, createdAt]
     );
@@ -526,10 +143,11 @@ export class DatabaseService {
     };
   }
 
-  static updateFriend(
+  static async updateFriend(
     id: string,
     updates: Partial<Friend>
-  ): Friend | undefined {
+  ): Promise<Friend | undefined> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
     const setParts = [];
@@ -551,12 +169,12 @@ export class DatabaseService {
     if (setParts.length === 0) return undefined;
 
     values.push(id);
-    this.db.runSync(
+    await this.db.runAsync(
       `UPDATE friends SET ${setParts.join(", ")} WHERE id = ?`,
       values
     );
 
-    const result = this.db.getFirstSync("SELECT * FROM friends WHERE id = ?", [
+    const result = await this.db.getFirstAsync("SELECT * FROM friends WHERE id = ?", [
       id,
     ]);
     if (!result) return undefined;
@@ -570,24 +188,26 @@ export class DatabaseService {
     };
   }
 
-  static deleteFriend(id: string): boolean {
+  static async deleteFriend(id: string): Promise<boolean> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
-    const result = this.db.runSync("DELETE FROM friends WHERE id = ?", [id]);
+    const result = await this.db.runAsync("DELETE FROM friends WHERE id = ?", [id]);
     return result.changes > 0;
   }
 
   // Split bills CRUD operations
-  static getAllSplittedBills(): Splitted[] {
+  static async getAllSplittedBills(): Promise<Splitted[]> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
-    const bills = this.db.getAllSync(
+    const bills = await this.db.getAllAsync(
       "SELECT * FROM split_bills ORDER BY createdAt DESC"
     );
     const result: Splitted[] = [];
 
     for (const bill of bills) {
-      const friends = this.db.getAllSync(
+      const friends = await this.db.getAllAsync(
         "SELECT * FROM split_bill_friends WHERE splitBillId = ? ORDER BY createdAt",
         [(bill as any).id]
       );
@@ -614,14 +234,17 @@ export class DatabaseService {
     return result;
   }
 
-  static addSplittedBill(bill: Omit<Splitted, "id" | "createdAt">): Splitted {
+  static async addSplittedBill(
+    bill: Omit<Splitted, "id" | "createdAt">
+  ): Promise<Splitted> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
     const id = Date.now().toString();
     const createdAt = new Date().toISOString();
 
     // Insert split bill
-    this.db.runSync(
+    await this.db.runAsync(
       "INSERT INTO split_bills (id, name, createdAt) VALUES (?, ?, ?)",
       [id, bill.name, createdAt]
     );
@@ -629,7 +252,7 @@ export class DatabaseService {
     // Insert split bill friends
     for (const friend of bill.friends) {
       const friendId = `${id}-${friend.friendId}`;
-      this.db.runSync(
+      await this.db.runAsync(
         "INSERT INTO split_bill_friends (id, splitBillId, friendId, name, accentColor, total, subTotal, me, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           friendId,
@@ -653,15 +276,45 @@ export class DatabaseService {
     };
   }
 
-  static getFriendSplitCount(friendId: string): number {
+  static async getFriendSplitCount(friendId: string): Promise<number> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
-    const result = this.db.getFirstSync(
+    const result = await this.db.getFirstAsync(
       "SELECT COUNT(*) as count FROM split_bill_friends WHERE friendId = ?",
       [friendId]
     );
 
     return (result as any)?.count || 0;
+  }
+
+  // Check if user profile exists
+  static async hasUserProfile(): Promise<boolean> {
+    await this.ensureInitialized();
+    if (!this.db) throw new Error("Database not initialized");
+
+    const result = await this.db.getFirstAsync(
+      "SELECT COUNT(*) as count FROM friends WHERE me = 1"
+    );
+    return (result as any)?.count > 0;
+  }
+
+  // Get user profile
+  static async getUserProfile(): Promise<Friend | null> {
+    await this.ensureInitialized();
+    if (!this.db) throw new Error("Database not initialized");
+
+    const result = await this.db.getFirstAsync("SELECT * FROM friends WHERE me = 1");
+
+    if (!result) return null;
+
+    return {
+      id: (result as any).id,
+      name: (result as any).name,
+      me: (result as any).me === 1,
+      accentColor: (result as any).accentColor,
+      createdAt: new Date((result as any).createdAt),
+    };
   }
 
   // Utility methods
