@@ -1,6 +1,8 @@
+import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
   Alert,
+  Animated,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,24 +15,36 @@ import { ThemedView } from "../../components/ThemedView";
 import { Colors } from "../../constants/Colors";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { DataService } from "../../services/DataService";
-import { Ionicons } from "@expo/vector-icons";
 
 export default function ScanScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress] = useState(new Animated.Value(0));
 
   const handleScanReceipt = () => {
     setIsScanning(true);
 
+    // Animate scanning progress
+    Animated.timing(scanProgress, {
+      toValue: 1,
+      duration: 2000,
+      useNativeDriver: false,
+    }).start();
+
     // Simulate scanning process
     setTimeout(() => {
       setIsScanning(false);
+      scanProgress.setValue(0);
       const mockScanResult = DataService.simulateSplitBillScan();
+      const totalItems = mockScanResult.friends.reduce(
+        (acc, friend) => acc + friend.items.length,
+        0
+      );
 
       Alert.alert(
         "Receipt Scanned!",
-        `Found: ${mockScanResult.name}\nWith ${mockScanResult.items.length} items`,
+        `Found: ${mockScanResult.name}\nWith ${totalItems} items`,
         [
           { text: "Cancel", style: "cancel" },
           {
@@ -61,103 +75,138 @@ export default function ScanScreen() {
       >
         {/* Header */}
         <ThemedView style={styles.header}>
+          <View style={styles.headerIcon}>
+            <Ionicons name="scan" size={32} color={colors.tint} />
+          </View>
           <ThemedText type="title" style={styles.title}>
             Scan Receipt
           </ThemedText>
           <ThemedText type="default" style={styles.subtitle}>
-            Scan receipts or enter manually
+            Digitize your receipts and split bills instantly
           </ThemedText>
         </ThemedView>
 
-        {/* Scan Options */}
+        {/* Action Buttons */}
         <ThemedView style={styles.section}>
-          <TouchableOpacity
+          <View
             style={[
-              styles.scanButton,
-              { backgroundColor: colors.tint },
-              isScanning && styles.scanButtonDisabled,
+              styles.buttonsContainer,
+              {
+                backgroundColor:
+                  colorScheme === "dark"
+                    ? "rgba(255, 255, 255, 0.02)"
+                    : "rgba(0, 0, 0, 0.02)",
+                borderColor:
+                  colorScheme === "dark"
+                    ? "rgba(255, 255, 255, 0.05)"
+                    : "rgba(0, 0, 0, 0.05)",
+              },
             ]}
-            onPress={handleScanReceipt}
-            disabled={isScanning}
           >
-            <Ionicons
-              name={isScanning ? "hourglass-outline" : "camera-outline"}
-              size={24}
-              color="#fff"
-              style={styles.scanButtonIcon}
-            />
-            <Text style={styles.scanButtonText}>
-              {isScanning ? "Scanning..." : "Scan Receipt"}
-            </Text>
-            <Text style={styles.scanButtonSubtext}>
-              {isScanning
-                ? "Processing receipt..."
-                : "Take a photo of your receipt"}
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.scanButton,
+                { backgroundColor: colors.tint },
+                isScanning && styles.scanButtonDisabled,
+              ]}
+              onPress={handleScanReceipt}
+              disabled={isScanning}
+            >
+              {isScanning ? (
+                <View style={styles.buttonContent}>
+                  <Animated.View
+                    style={[
+                      styles.loadingDot,
+                      {
+                        transform: [
+                          {
+                            scale: scanProgress.interpolate({
+                              inputRange: [0, 0.5, 1],
+                              outputRange: [1, 1.2, 1],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+                  <Text style={styles.buttonText}>Scanning...</Text>
+                </View>
+              ) : (
+                <View style={styles.buttonContent}>
+                  <Ionicons name="camera" size={20} color="#fff" />
+                  <Text style={styles.buttonText}>Scan Receipt</Text>
+                </View>
+              )}
+            </TouchableOpacity>
 
-          <View style={styles.divider}>
-            <View
-              style={[styles.dividerLine, { backgroundColor: colors.text }]}
-            />
-            <Text style={[styles.dividerText, { color: colors.text }]}>OR</Text>
-            <View
-              style={[styles.dividerLine, { backgroundColor: colors.text }]}
-            />
+            <View style={styles.divider}>
+              <View
+                style={[styles.dividerLine, { backgroundColor: colors.text }]}
+              />
+              <Text style={[styles.dividerText, { color: colors.text }]}>
+                OR
+              </Text>
+              <View
+                style={[styles.dividerLine, { backgroundColor: colors.text }]}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.manualButton,
+                {
+                  borderColor: colors.tint,
+                  backgroundColor:
+                    colorScheme === "dark"
+                      ? "rgba(74, 147, 207, 0.08)"
+                      : "#fff",
+                },
+              ]}
+              onPress={handleManualEntry}
+            >
+              <View style={styles.buttonContent}>
+                <Ionicons name="pencil" size={20} color={colors.tint} />
+                <Text style={[styles.buttonText, { color: colors.tint }]}>
+                  Manual Split
+                </Text>
+              </View>
+            </TouchableOpacity>
           </View>
-
-          <TouchableOpacity
-            style={[styles.manualButton, { borderColor: colors.tint }]}
-            onPress={handleManualEntry}
-          >
-            <Ionicons
-              name="pencil-outline"
-              size={20}
-              color={colors.tint}
-              style={styles.manualButtonIcon}
-            />
-            <Text style={[styles.manualButtonText, { color: colors.tint }]}>
-              Manual Entry
-            </Text>
-            <Text style={[styles.manualButtonSubtext, { color: colors.text }]}>
-              Enter receipt details manually
-            </Text>
-          </TouchableOpacity>
         </ThemedView>
 
         {/* Tips */}
         <ThemedView style={styles.section}>
           <ThemedText type="subtitle" style={styles.sectionTitle}>
-            Tips for Better Scanning
+            Scanning Tips
           </ThemedText>
           <View style={styles.tipsList}>
-            <View style={styles.tipItem}>
+            <View style={[styles.tipItem, styles.tipItemOrange]}>
               <Ionicons
-                name="bulb-outline"
+                name="sunny"
                 size={16}
-                color={colors.tint}
+                color="#E67E22"
                 style={styles.tipIcon}
               />
               <Text style={[styles.tipText, { color: colors.text }]}>
                 Ensure good lighting when taking the photo
               </Text>
             </View>
-            <View style={styles.tipItem}>
+            <View style={[styles.tipItem, styles.tipItemRed]}>
               <Ionicons
-                name="resize-outline"
+                name="expand"
                 size={16}
-                color={colors.tint}
+                color="#E74C3C"
                 style={styles.tipIcon}
               />
               <Text style={[styles.tipText, { color: colors.text }]}>
                 Keep the receipt flat and fully visible
               </Text>
             </View>
-            <View style={styles.tipItem}>
+            <View style={[styles.tipItem, styles.tipItemGreen]}>
               <Ionicons
-                name="search-outline"
+                name="eye"
                 size={16}
-                color={colors.tint}
+                color="#27AE60"
                 style={styles.tipIcon}
               />
               <Text style={[styles.tipText, { color: colors.text }]}>
@@ -181,42 +230,167 @@ const styles = StyleSheet.create({
   header: {
     padding: 20,
     paddingBottom: 30,
+    alignItems: "center",
+  },
+  headerIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(74, 147, 207, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
   },
   title: {
     fontSize: 28,
     fontWeight: "bold",
     marginBottom: 8,
+    textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
     opacity: 0.7,
+    textAlign: "center",
+    paddingHorizontal: 20,
   },
   section: {
     marginHorizontal: 20,
     marginBottom: 30,
+    paddingBottom: 60,
+  },
+  buttonsContainer: {
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  cameraPreview: {
+    height: 280,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    marginBottom: 20,
+    overflow: "hidden",
+  },
+  cameraOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scanFrame: {
+    width: "80%",
+    height: "70%",
+    borderRadius: 12,
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  corner: {
+    position: "absolute",
+    width: 20,
+    height: 20,
+    borderWidth: 3,
+  },
+  topLeft: {
+    top: -1,
+    left: -1,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 8,
+  },
+  topRight: {
+    top: -1,
+    right: -1,
+    borderLeftWidth: 0,
+    borderBottomWidth: 0,
+    borderTopRightRadius: 8,
+  },
+  bottomLeft: {
+    bottom: -1,
+    left: -1,
+    borderRightWidth: 0,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 8,
+  },
+  bottomRight: {
+    bottom: -1,
+    right: -1,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+    borderBottomRightRadius: 8,
+  },
+  scanLine: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: 2,
+    opacity: 0.8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  cameraContent: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cameraText: {
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: "500",
   },
   scanButton: {
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 24,
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 6,
+    transform: [{ translateY: 0 }],
   },
   scanButtonDisabled: {
     opacity: 0.6,
+    transform: [{ translateY: 1 }],
   },
-  scanButtonIcon: {
-    marginBottom: 12,
+  buttonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  scanButtonText: {
+  buttonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 10,
     color: "#fff",
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 4,
+    letterSpacing: 0.5,
   },
-  scanButtonSubtext: {
-    color: "#fff",
-    fontSize: 14,
-    opacity: 0.8,
+  loadingDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.4)",
+    marginRight: 8,
+  },
+  manualButton: {
+    borderWidth: 2,
+    borderRadius: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
   },
   divider: {
     flexDirection: "row",
@@ -226,36 +400,45 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    opacity: 0.3,
+    opacity: 0.15,
   },
   dividerText: {
-    marginHorizontal: 16,
-    fontSize: 14,
-    fontWeight: "500",
-    opacity: 0.6,
-  },
-  manualButton: {
-    borderWidth: 2,
-    borderRadius: 16,
-    padding: 24,
-    alignItems: "center",
-  },
-  manualButtonIcon: {
-    marginBottom: 12,
-  },
-  manualButtonText: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 4,
-  },
-  manualButtonSubtext: {
-    fontSize: 14,
-    opacity: 0.7,
+    marginHorizontal: 20,
+    fontSize: 11,
+    fontWeight: "600",
+    opacity: 0.5,
+    textTransform: "uppercase",
+    letterSpacing: 1.5,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
     marginBottom: 16,
+  },
+  featureGrid: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 20,
+  },
+  featureCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.05)",
+  },
+  featureTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  featureDesc: {
+    fontSize: 12,
+    opacity: 0.7,
+    textAlign: "center",
   },
   tipsList: {
     gap: 12,
@@ -264,6 +447,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 12,
+    padding: 16,
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
+    borderLeftWidth: 3,
+  },
+  tipItemOrange: {
+    backgroundColor: "rgba(255, 193, 132, 0.12)",
+    borderLeftColor: "#E67E22",
+  },
+  tipItemRed: {
+    backgroundColor: "rgba(255, 151, 151, 0.12)",
+    borderLeftColor: "#E74C3C",
+  },
+  tipItemGreen: {
+    backgroundColor: "rgba(174, 230, 174, 0.12)",
+    borderLeftColor: "#27AE60",
   },
   tipIcon: {
     marginTop: 2,
