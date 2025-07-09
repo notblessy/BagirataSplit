@@ -37,3 +37,12 @@ yarn-error.*
 *.tsbuildinfo
 
 android
+
+# EAS and Firebase Configuration
+google-services.json
+android-service-account.json
+GoogleService-Info.plist
+
+# Temporary files
+*.tmp
+*.temp
