@@ -14,8 +14,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
 import { useRecognizeReceipt } from "../hooks/useSplitApi";
-import { AssignedItem, Friend, OtherItem, SplitItem } from "../types";
 import { DataService } from "../services/DataService";
+import { AssignedItem, Friend, OtherItem, SplitItem } from "../types";
 
 type FlowStep = "review" | "bank" | "assign" | "share";
 
@@ -73,6 +73,14 @@ export function UnifiedSplitScreen({
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
   const [currentAssignmentItem, setCurrentAssignmentItem] =
     useState<AssignedItem | null>(null);
+
+  // Participant management states
+  const [selectedParticipants, setSelectedParticipants] = useState<string[]>(
+    []
+  );
+  const [showParticipantSheet, setShowParticipantSheet] = useState(false);
+  const [participantSearchQuery, setParticipantSearchQuery] = useState("");
+  const [filteredFriends, setFilteredFriends] = useState<Friend[]>([]);
 
   // Use API hook for recognizing receipt text (only for scan flow)
   const {
@@ -175,12 +183,39 @@ export function UnifiedSplitScreen({
       try {
         const friendsData = await DataService.getAllFriends();
         setFriends(friendsData);
+
+        // Leave participants empty initially - user can choose who to include
       } catch (error) {
         console.error("Error loading friends:", error);
       }
     };
     loadFriends();
   }, []);
+
+  // Filter friends based on search query
+  useEffect(() => {
+    if (participantSearchQuery.trim() === "") {
+      setFilteredFriends(
+        friends.filter((f) => !selectedParticipants.includes(f.id))
+      );
+    } else {
+      setFilteredFriends(
+        friends.filter(
+          (f) =>
+            !selectedParticipants.includes(f.id) &&
+            f.name.toLowerCase().includes(participantSearchQuery.toLowerCase())
+        )
+      );
+    }
+  }, [participantSearchQuery, friends, selectedParticipants]);
+
+  // Sync participants with split data
+  useEffect(() => {
+    if (currentSplitData) {
+      const splitParticipants = currentSplitData.friends.map((f) => f.friendId);
+      setSelectedParticipants(splitParticipants);
+    }
+  }, [currentSplitData]);
 
   // Initialize for manual entry
   useEffect(() => {
@@ -203,20 +238,27 @@ export function UnifiedSplitScreen({
       return;
     }
 
+    if (selectedParticipants.length === 0) {
+      Alert.alert("Error", "Please add at least one participant");
+      return;
+    }
+
     const newSplitData: SplitItem = {
       id: Date.now().toString(),
       name: splitName.trim(),
       status: "draft",
-      friends: friends.map((friend) => ({
-        id: friend.id,
-        friendId: friend.id,
-        name: friend.name,
-        me: friend.me,
-        accentColor: friend.accentColor,
-        qty: 0,
-        subTotal: 0,
-        createdAt: friend.createdAt,
-      })),
+      friends: friends
+        .filter((friend) => selectedParticipants.includes(friend.id))
+        .map((friend) => ({
+          id: friend.id,
+          friendId: friend.id,
+          name: friend.name,
+          me: friend.me,
+          accentColor: friend.accentColor,
+          qty: 0,
+          subTotal: 0,
+          createdAt: friend.createdAt,
+        })),
       items: items,
       otherPayments: [],
       createdAt: new Date(),
@@ -234,6 +276,10 @@ export function UnifiedSplitScreen({
       }
       if (!currentSplitData) {
         Alert.alert("Error", "No split data available");
+        return;
+      }
+      if (selectedParticipants.length === 0) {
+        Alert.alert("Error", "Please add at least one participant");
         return;
       }
       if (currentSplitData.name.length > 25) {
@@ -257,6 +303,41 @@ export function UnifiedSplitScreen({
       setCurrentStep("review");
     } else if (currentStep === "share") {
       setCurrentStep("assign");
+    }
+  };
+
+  // Participant management functions
+  const addParticipant = (friendId: string) => {
+    if (!selectedParticipants.includes(friendId)) {
+      setSelectedParticipants((prev) => [...prev, friendId]);
+    }
+    setShowParticipantSheet(false);
+    setParticipantSearchQuery("");
+  };
+
+  const removeParticipant = (friendId: string) => {
+    setSelectedParticipants((prev) => prev.filter((id) => id !== friendId));
+  };
+
+  const addNewFriend = async (name: string) => {
+    try {
+      const newFriend = await DataService.addFriend({
+        name: name.trim(),
+        accentColor: "#007AFF",
+        me: false,
+      });
+
+      // Refresh friends list
+      const friendsData = await DataService.getAllFriends();
+      setFriends(friendsData);
+
+      // Add to participants
+      setSelectedParticipants((prev) => [...prev, newFriend.id]);
+      setShowParticipantSheet(false);
+      setParticipantSearchQuery("");
+    } catch (error) {
+      console.error("Error adding friend:", error);
+      Alert.alert("Error", "Failed to add friend");
     }
   };
 
@@ -632,6 +713,87 @@ export function UnifiedSplitScreen({
                 placeholderTextColor={colors.text + "60"}
                 maxLength={25}
               />
+            </View>
+
+            {/* Participants Section */}
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                Participants ({selectedParticipants.length})
+              </Text>
+
+              {selectedParticipants.length === 0 ? (
+                <View style={styles.participantsContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.addParticipantButton,
+                      { borderColor: colors.tint, marginTop: 12 },
+                    ]}
+                    onPress={() => setShowParticipantSheet(true)}
+                  >
+                    <Ionicons name="add" size={24} color={colors.tint} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.participantsScroll}
+                  contentContainerStyle={styles.participantsContainer}
+                >
+                  {selectedParticipants.map((participantId) => {
+                    const participant = friends.find(
+                      (f) => f.id === participantId
+                    );
+                    if (!participant) return null;
+
+                    return (
+                      <View key={participantId} style={styles.participantItem}>
+                        <TouchableOpacity
+                          style={[
+                            styles.participantAvatar,
+                            { backgroundColor: participant.accentColor },
+                          ]}
+                          onPress={() => removeParticipant(participantId)}
+                        >
+                          <Text style={styles.participantInitial}>
+                            {participant.name.charAt(0).toUpperCase()}
+                          </Text>
+                          <View style={styles.removeIndicator}>
+                            <Ionicons name="close" size={12} color="white" />
+                          </View>
+                        </TouchableOpacity>
+                        <Text
+                          style={[
+                            styles.participantName,
+                            { color: colors.text },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {participant.me ? "You" : participant.name}
+                        </Text>
+                      </View>
+                    );
+                  })}
+
+                  {/* Add Participant Button */}
+                  <View style={styles.participantItem}>
+                    <TouchableOpacity
+                      style={[
+                        styles.addParticipantButton,
+                        { borderColor: colors.tint },
+                      ]}
+                      onPress={() => setShowParticipantSheet(true)}
+                    >
+                      <Ionicons name="add" size={24} color={colors.tint} />
+                    </TouchableOpacity>
+                    <Text
+                      style={[styles.participantName, { color: colors.text }]}
+                    >
+                      Add
+                    </Text>
+                  </View>
+                </ScrollView>
+              )}
             </View>
 
             {/* Items Section */}
@@ -1386,6 +1548,98 @@ export function UnifiedSplitScreen({
           </View>
         </View>
       )}
+
+      {/* Participant Management Sheet */}
+      {showParticipantSheet && (
+        <View style={styles.overlay}>
+          <View style={[styles.sheet, { backgroundColor: colors.background }]}>
+            <View style={styles.sheetHeader}>
+              <Text style={[styles.sheetTitle, { color: colors.text }]}>
+                Add Participant
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowParticipantSheet(false);
+                  setParticipantSearchQuery("");
+                }}
+              >
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.sheetContent}>
+              <TextInput
+                style={[
+                  styles.sheetInput,
+                  { borderColor: colors.text + "30", color: colors.text },
+                ]}
+                value={participantSearchQuery}
+                onChangeText={setParticipantSearchQuery}
+                placeholder="Search friends or enter name..."
+                placeholderTextColor={colors.text + "60"}
+                autoFocus
+              />
+
+              <ScrollView style={styles.friendsList}>
+                {filteredFriends.map((friend) => (
+                  <TouchableOpacity
+                    key={friend.id}
+                    style={[
+                      styles.participantFriendItem,
+                      { borderColor: colors.text + "20" },
+                    ]}
+                    onPress={() => addParticipant(friend.id)}
+                  >
+                    <View
+                      style={[
+                        styles.participantFriendAvatar,
+                        { backgroundColor: friend.accentColor },
+                      ]}
+                    >
+                      <Text style={styles.participantFriendInitial}>
+                        {friend.name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.participantFriendName,
+                        { color: colors.text },
+                      ]}
+                    >
+                      {friend.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+
+                {filteredFriends.length === 0 &&
+                  participantSearchQuery.trim() !== "" && (
+                    <TouchableOpacity
+                      style={[
+                        styles.addNewFriendButton,
+                        { borderColor: colors.tint },
+                      ]}
+                      onPress={() => addNewFriend(participantSearchQuery)}
+                    >
+                      <Ionicons
+                        name="person-add"
+                        size={20}
+                        color={colors.tint}
+                      />
+                      <Text
+                        style={[
+                          styles.addNewFriendText,
+                          { color: colors.tint },
+                        ]}
+                      >
+                        Add &quot;{participantSearchQuery}&quot; as new friend
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -1434,22 +1688,27 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
     marginBottom: 20,
+    alignItems: "center",
   },
   progressStep: {
-    flex: 1,
     alignItems: "center",
+    position: "relative",
+    flex: 1,
   },
   progressDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
+    zIndex: 2,
   },
   progressLine: {
     position: "absolute",
     top: 6,
+    left: "50%",
     width: "100%",
     height: 2,
     borderRadius: 1,
+    zIndex: 1,
   },
   stepContent: {
     width: "100%",
@@ -1874,5 +2133,113 @@ const styles = StyleSheet.create({
   bankInfoDetail: {
     fontSize: 14,
     marginBottom: 4,
+  },
+  // Participant management styles
+  participantsScroll: {
+    flexGrow: 0,
+    paddingVertical: 16,
+  },
+  participantsContainer: {
+    paddingHorizontal: 0,
+  },
+  participantItem: {
+    alignItems: "center",
+    width: 60,
+  },
+  participantAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  participantInitial: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  removeIndicator: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#FF3B30",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  participantName: {
+    fontSize: 12,
+    marginTop: 4,
+    textAlign: "center",
+    width: 60,
+  },
+  emptyParticipants: {
+    alignItems: "center",
+    padding: 20,
+    borderWidth: 1,
+    borderRadius: 8,
+    borderStyle: "dashed",
+    borderColor: "#ccc",
+  },
+  emptyText: {
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  addParticipantButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  // Friend list styles (using different names to avoid duplicates)
+  friendsList: {
+    maxHeight: 300,
+  },
+  participantFriendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  participantFriendAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  participantFriendInitial: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  participantFriendName: {
+    fontSize: 16,
+    marginLeft: 12,
+    flex: 1,
+  },
+  addNewFriendButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    borderWidth: 2,
+    borderRadius: 8,
+    borderStyle: "dashed",
+    marginTop: 12,
+  },
+  addNewFriendText: {
+    fontSize: 16,
+    marginLeft: 8,
+    fontWeight: "500",
   },
 });
