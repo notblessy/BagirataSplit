@@ -8,13 +8,15 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Share,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ThemedText } from "../../components/ThemedText";
-import { ThemedView } from "../../components/ThemedView";
+import { UnifiedSplitScreen } from "../../components/UnifiedSplitScreen";
 import { Colors } from "../../constants/Colors";
 import { useColorScheme } from "../../hooks/useColorScheme";
-import { DataService } from "../../services/DataService";
+import { useSplitOperations } from "../../hooks/useSplitApi";
+import { ScannerService } from "../../services/ScannerService";
+import { SplitItem } from "../../types";
 
 export default function ScanScreen() {
   const colorScheme = useColorScheme();
@@ -22,7 +24,18 @@ export default function ScanScreen() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress] = useState(new Animated.Value(0));
 
-  const handleScanReceipt = () => {
+  // Navigation state
+  const [currentScreen, setCurrentScreen] = useState<
+    "main" | "split" | "manual"
+  >("main");
+  const [scannedImageBase64, setScannedImageBase64] = useState<string | null>(
+    null
+  );
+
+  // API hooks
+  const { createSplit, generateShare } = useSplitOperations();
+
+  const handleScanReceipt = async () => {
     setIsScanning(true);
 
     // Animate scanning progress
@@ -32,38 +45,105 @@ export default function ScanScreen() {
       useNativeDriver: false,
     }).start();
 
-    // Simulate scanning process
-    setTimeout(() => {
+    try {
+      // Use actual document scanner
+      const scanResult = await ScannerService.scanDocumentWithOCR();
+
+      if (scanResult.success && scanResult.imageBase64) {
+        // Store the scanned image for OCR processing
+        setScannedImageBase64(scanResult.imageBase64);
+        setCurrentScreen("split");
+      } else {
+        Alert.alert(
+          "Scan Failed",
+          scanResult.message || "Failed to scan receipt. Please try again.",
+          [{ text: "OK" }]
+        );
+      }
+    } catch (error: any) {
+      console.error("Scan error:", error);
+      Alert.alert(
+        "Scan Error",
+        "An error occurred while scanning. Please try again.",
+        [{ text: "OK" }]
+      );
+    } finally {
       setIsScanning(false);
       scanProgress.setValue(0);
-      const mockScanResult = DataService.simulateSplitBillScan();
-      const totalItems = mockScanResult.friends.reduce(
-        (acc, friend) => acc + friend.items.length,
-        0
-      );
-
-      Alert.alert(
-        "Receipt Scanned!",
-        `Found: ${mockScanResult.name}\nWith ${totalItems} items`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Continue Split",
-            onPress: () => {
-              // Navigate to split screen or show split details
-              console.log("Continue with split:", mockScanResult);
-            },
-          },
-        ]
-      );
-    }, 2000);
+    }
   };
 
   const handleManualEntry = () => {
-    Alert.alert("Manual Entry", "Manual entry feature coming soon!", [
-      { text: "OK" },
-    ]);
+    setCurrentScreen("manual");
   };
+
+  const handleBackToMain = () => {
+    setCurrentScreen("main");
+    setScannedImageBase64(null);
+  };
+
+  const handleShareSplit = async (splitData: SplitItem) => {
+    try {
+      // Create the split via API
+      const result = await createSplit({
+        name: splitData.name,
+        total_amount: splitData.items.reduce(
+          (sum, item) => sum + item.price * item.qty,
+          0
+        ),
+        items: splitData.items,
+        other_payments: splitData.otherPayments,
+        friends: splitData.friends,
+      });
+
+      if (result.success) {
+        // Generate share content
+        const shareData = await generateShare(result.data.split_id);
+
+        if (shareData.success) {
+          // Use React Native's Share API
+          await Share.share({
+            message: shareData.data.share_text,
+            url: shareData.data.share_url,
+            title: `Split Bill: ${splitData.name}`,
+          });
+        }
+
+        Alert.alert(
+          "Split Shared!",
+          "Your split has been created and shared successfully.",
+          [{ text: "OK", onPress: handleBackToMain }]
+        );
+      }
+    } catch (error: any) {
+      console.error("Share split error:", error);
+      Alert.alert("Share Error", "Failed to share split. Please try again.", [
+        { text: "OK" },
+      ]);
+    }
+  };
+
+  // Show unified split screen for scan or manual flow
+  if (currentScreen === "split") {
+    return (
+      <UnifiedSplitScreen
+        scannedText={scannedImageBase64 || undefined}
+        isManualEntry={false}
+        onBack={handleBackToMain}
+        onShare={handleShareSplit}
+      />
+    );
+  }
+
+  if (currentScreen === "manual") {
+    return (
+      <UnifiedSplitScreen
+        isManualEntry={true}
+        onBack={handleBackToMain}
+        onShare={handleShareSplit}
+      />
+    );
+  }
 
   return (
     <SafeAreaView
@@ -74,20 +154,20 @@ export default function ScanScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <ThemedView style={styles.header}>
+        <View style={styles.header}>
           <View style={styles.headerIcon}>
             <Ionicons name="scan" size={32} color={colors.tint} />
           </View>
-          <ThemedText type="title" style={styles.title}>
+          <Text style={[styles.title, { color: colors.text }]}>
             Scan Receipt
-          </ThemedText>
-          <ThemedText type="default" style={styles.subtitle}>
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.text }]}>
             Digitize your receipts and split bills instantly
-          </ThemedText>
-        </ThemedView>
+          </Text>
+        </View>
 
         {/* Action Buttons */}
-        <ThemedView style={styles.section}>
+        <View style={styles.section}>
           <View
             style={[
               styles.buttonsContainer,
@@ -172,13 +252,13 @@ export default function ScanScreen() {
               </View>
             </TouchableOpacity>
           </View>
-        </ThemedView>
+        </View>
 
         {/* Tips */}
-        <ThemedView style={styles.section}>
-          <ThemedText type="subtitle" style={styles.sectionTitle}>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Scanning Tips
-          </ThemedText>
+          </Text>
           <View style={styles.tipsList}>
             <View style={[styles.tipItem, styles.tipItemOrange]}>
               <Ionicons
@@ -214,7 +294,7 @@ export default function ScanScreen() {
               </Text>
             </View>
           </View>
-        </ThemedView>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
