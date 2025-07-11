@@ -117,7 +117,7 @@ export class ScannerService {
   }
 
   /**
-   * Complete scan workflow: scan document and convert to base64
+   * Complete scan workflow: scan document and extract text using OCR
    */
   static async scanDocumentWithOCR(): Promise<{
     success: boolean;
@@ -140,18 +140,29 @@ export class ScannerService {
         };
       }
 
-      // Step 2: Convert to base64
+      // Step 2: Get the image URI
       const imageUri = scanResult.scannedImages[0];
-      const imageBase64 = await this.convertImageToBase64(imageUri);
 
-      // Step 3: Extract text using OCR
-      const ocrResult = await OCRService.extractTextFromImage(imageBase64);
+      // Step 3: Extract text using OCR directly from URI (more efficient)
+      const ocrResult = await OCRService.extractTextFromImageUri(imageUri);
 
       if (!ocrResult.success) {
         return {
           success: false,
           message: ocrResult.error || "Failed to extract text from image",
         };
+      }
+
+      // Step 4: Optionally convert to base64 for backup (if needed)
+      let imageBase64: string | undefined;
+      try {
+        imageBase64 = await this.convertImageToBase64(imageUri);
+      } catch (error) {
+        console.warn(
+          "Failed to convert image to base64, but OCR was successful:",
+          error
+        );
+        // Don't fail the entire operation if base64 conversion fails
       }
 
       return {

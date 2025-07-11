@@ -1,5 +1,7 @@
+import TextRecognition from "@react-native-ml-kit/text-recognition";
+
 /**
- * OCR Service for extracting text from images
+ * OCR Service for extracting text from images using React Native ML Kit
  * This service provides text recognition capabilities for receipt scanning
  */
 
@@ -12,53 +14,24 @@ export interface OCRResult {
 
 export class OCRService {
   /**
-   * Extract text from base64 image using device OCR capabilities
-   * For now, this is a placeholder that will use a cloud OCR service
+   * Extract text from image URI using React Native ML Kit
    */
-  static async extractTextFromImage(imageBase64: string): Promise<OCRResult> {
+  static async extractTextFromImageUri(imageUri: string): Promise<OCRResult> {
     try {
-      // For development, we'll use a mock implementation
-      // In production, you would integrate with:
-      // - Google Vision API
-      // - AWS Textract
-      // - Azure Computer Vision
-      // - Or use react-native-text-recognition if available
+      const result = await TextRecognition.recognize(imageUri);
 
-      console.log("OCR: Processing image of length:", imageBase64.length);
-
-      // Simulate OCR processing delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // Mock OCR result with typical receipt text
-      const mockReceiptText = `
-RESTAURANT EXAMPLE
-123 Main Street
-City, State 12345
-Tel: (555) 123-4567
-
-Receipt #: 001234
-Date: ${new Date().toLocaleDateString()}
-Server: John Doe
-
-ORDER:
-1x Nasi Goreng          15,000
-2x Es Teh               6,000
-1x Ayam Bakar          25,000
-1x Gado-gado           12,000
-
-Subtotal:              58,000
-Tax (10%):              5,800
-Service Charge (5%):    2,900
-Total:                 66,700
-
-Thank you for dining with us!
-      `.trim();
-
-      return {
-        success: true,
-        text: mockReceiptText,
-        confidence: 0.95,
-      };
+      if (result && result.text) {
+        return {
+          success: true,
+          text: result.text,
+          confidence: 0.9, // ML Kit doesn't provide confidence scores for the overall text
+        };
+      } else {
+        return {
+          success: false,
+          error: "No text detected in image",
+        };
+      }
     } catch (error: any) {
       console.error("OCR extraction error:", error);
       return {
@@ -69,12 +42,59 @@ Thank you for dining with us!
   }
 
   /**
+   * Extract text from base64 image (legacy method for backward compatibility)
+   * Note: ML Kit works better with file URIs, so this converts base64 to file first
+   */
+  static async extractTextFromImage(imageBase64: string): Promise<OCRResult> {
+    try {
+      // ML Kit works better with file URIs
+      // For base64, we'll need to convert it to a temporary file
+      console.log("OCR: Base64 input detected, converting to file URI...");
+
+      // Create a temporary file from base64
+      const tempUri = await this.saveBase64ToTempFile(imageBase64);
+
+      // Use the URI-based method
+      return await this.extractTextFromImageUri(tempUri);
+    } catch (error: any) {
+      console.error("OCR base64 extraction error:", error);
+      return {
+        success: false,
+        error: error.message || "Failed to extract text from base64 image",
+      };
+    }
+  }
+
+  /**
+   * Save base64 image to temporary file and return URI
+   */
+  private static async saveBase64ToTempFile(base64: string): Promise<string> {
+    const FileSystem = await import("expo-file-system");
+
+    // Create a temporary file path
+    const tempPath = `${
+      FileSystem.documentDirectory
+    }temp_receipt_${Date.now()}.jpg`;
+
+    // Write base64 to file
+    await FileSystem.writeAsStringAsync(tempPath, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    return tempPath;
+  }
+
+  /**
    * Check if OCR service is available
    */
   static async isAvailable(): Promise<boolean> {
-    // For mock implementation, always return true
-    // In production, check if the OCR service/API is accessible
-    return true;
+    try {
+      // ML Kit should be available on both iOS and Android
+      return typeof TextRecognition.recognize === "function";
+    } catch (error) {
+      console.error("OCR availability check failed:", error);
+      return false;
+    }
   }
 
   /**
@@ -87,58 +107,3 @@ Thank you for dining with us!
       .trim();
   }
 }
-
-// Alternative implementation using Google Vision API (commented out for now)
-/*
-export class GoogleVisionOCRService {
-  private static readonly API_KEY = 'YOUR_GOOGLE_VISION_API_KEY';
-  private static readonly API_URL = 'https://vision.googleapis.com/v1/images:annotate';
-
-  static async extractTextFromImage(imageBase64: string): Promise<OCRResult> {
-    try {
-      const response = await fetch(`${this.API_URL}?key=${this.API_KEY}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          requests: [
-            {
-              image: {
-                content: imageBase64,
-              },
-              features: [
-                {
-                  type: 'TEXT_DETECTION',
-                  maxResults: 1,
-                },
-              ],
-            },
-          ],
-        }),
-      });
-
-      const result = await response.json();
-      
-      if (result.responses && result.responses[0] && result.responses[0].textAnnotations) {
-        const text = result.responses[0].textAnnotations[0].description;
-        return {
-          success: true,
-          text,
-          confidence: 0.9,
-        };
-      } else {
-        return {
-          success: false,
-          error: 'No text detected in image',
-        };
-      }
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || 'OCR service error',
-      };
-    }
-  }
-}
-*/
