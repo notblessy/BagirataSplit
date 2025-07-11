@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +15,13 @@ import { Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
 import { useRecognizeReceipt } from "../hooks/useSplitApi";
 import { DataService } from "../services/DataService";
-import { AssignedItem, Friend, OtherItem, SplitItem } from "../types";
+import {
+  AssignedFriend,
+  AssignedItem,
+  Friend,
+  OtherItem,
+  SplitItem,
+} from "../types";
 
 type FlowStep = "review" | "bank" | "assign" | "share";
 
@@ -213,11 +219,18 @@ export function UnifiedSplitScreen({
     }
   }, [participantSearchQuery, friends, selectedParticipants]);
 
-  // Sync participants with split data
+  // Sync participants with split data only on initial load or when loading different split
+  const lastSplitIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (currentSplitData) {
       const splitParticipants = currentSplitData.friends.map((f) => f.friendId);
-      setSelectedParticipants(splitParticipants);
+
+      // Only sync if this is a different split (different ID) or first load
+      if (lastSplitIdRef.current !== currentSplitData.id) {
+        setSelectedParticipants(splitParticipants);
+        lastSplitIdRef.current = currentSplitData.id;
+      }
     }
   }, [currentSplitData]);
 
@@ -315,6 +328,31 @@ export function UnifiedSplitScreen({
   const addParticipant = (friendId: string) => {
     if (!selectedParticipants.includes(friendId)) {
       setSelectedParticipants((prev) => [...prev, friendId]);
+
+      // Also update currentSplitData if it exists
+      if (currentSplitData) {
+        const friend = friends.find((f) => f.id === friendId);
+        if (
+          friend &&
+          !currentSplitData.friends.some((f) => f.friendId === friendId)
+        ) {
+          const newAssignedFriend: AssignedFriend = {
+            id: (Date.now() + Math.random()).toString(),
+            friendId: friend.id,
+            name: friend.name,
+            me: friend.me,
+            accentColor: friend.accentColor,
+            qty: 0,
+            subTotal: 0,
+            createdAt: new Date(),
+          };
+
+          setCurrentSplitData({
+            ...currentSplitData,
+            friends: [...currentSplitData.friends, newAssignedFriend],
+          });
+        }
+      }
     }
     setShowParticipantSheet(false);
     setParticipantSearchQuery("");
@@ -322,6 +360,16 @@ export function UnifiedSplitScreen({
 
   const removeParticipant = (friendId: string) => {
     setSelectedParticipants((prev) => prev.filter((id) => id !== friendId));
+
+    // Also update currentSplitData if it exists
+    if (currentSplitData) {
+      setCurrentSplitData({
+        ...currentSplitData,
+        friends: currentSplitData.friends.filter(
+          (f) => f.friendId !== friendId
+        ),
+      });
+    }
   };
 
   const addNewFriend = async (name: string) => {
@@ -338,6 +386,26 @@ export function UnifiedSplitScreen({
 
       // Add to participants
       setSelectedParticipants((prev) => [...prev, newFriend.id]);
+
+      // Also update currentSplitData if it exists
+      if (currentSplitData) {
+        const newAssignedFriend: AssignedFriend = {
+          id: (Date.now() + Math.random()).toString(),
+          friendId: newFriend.id,
+          name: newFriend.name,
+          me: newFriend.me,
+          accentColor: newFriend.accentColor,
+          qty: 0,
+          subTotal: 0,
+          createdAt: new Date(),
+        };
+
+        setCurrentSplitData({
+          ...currentSplitData,
+          friends: [...currentSplitData.friends, newAssignedFriend],
+        });
+      }
+
       setShowParticipantSheet(false);
       setParticipantSearchQuery("");
     } catch (error) {
@@ -653,10 +721,16 @@ export function UnifiedSplitScreen({
     if (currentSplitData?.otherPayments) {
       const othersTotal = currentSplitData.otherPayments.reduce(
         (sum: number, other: OtherItem) => {
+          let amount = other.amount;
           if (other.usePercentage) {
-            return sum + (itemsTotal * other.amount) / 100;
+            amount = (itemsTotal * other.amount) / 100;
           }
-          return sum + other.amount;
+
+          if (other.type === "discount") {
+            return sum - amount;
+          } else {
+            return sum + amount;
+          }
         },
         0
       );
@@ -664,6 +738,57 @@ export function UnifiedSplitScreen({
     }
 
     return itemsTotal;
+  };
+
+  const calculateFriendTotalWithOtherPayments = (friendId: string) => {
+    if (!currentSplitData) return 0;
+
+    // Calculate base total from assigned items
+    const itemsTotal = currentSplitData.items.reduce((total, item) => {
+      const friendAssignment = item.friends.find((f) => f.id === friendId);
+      if (friendAssignment) {
+        return total + item.price * friendAssignment.qty;
+      }
+      return total;
+    }, 0);
+
+    // Calculate total items value for percentage calculations
+    const totalItemsValue = currentSplitData.items.reduce(
+      (sum, item) => sum + item.price * item.qty,
+      0
+    );
+
+    // Calculate participant count for equal splitting
+    const participantCount = selectedParticipants.length;
+
+    if (participantCount === 0) return itemsTotal;
+
+    // Apply other payments
+    const otherPaymentsTotal = currentSplitData.otherPayments.reduce(
+      (total, other) => {
+        let amount = other.amount;
+        if (other.usePercentage) {
+          amount = (totalItemsValue * other.amount) / 100;
+        }
+
+        if (other.type === "tax") {
+          // Tax is calculated proportionally based on participant's item total
+          const taxAmount = (itemsTotal * amount) / totalItemsValue;
+          return total + taxAmount;
+        } else {
+          // Additions and discounts are split equally among participants
+          const perParticipantAmount = amount / participantCount;
+          if (other.type === "discount") {
+            return total - perParticipantAmount;
+          } else {
+            return total + perParticipantAmount;
+          }
+        }
+      },
+      0
+    );
+
+    return itemsTotal + otherPaymentsTotal;
   };
 
   // Bank info functions
@@ -1206,75 +1331,179 @@ export function UnifiedSplitScreen({
               </View>
 
               {/* Friends breakdown */}
-              {friends.map((friend) => {
-                const total = calculateFriendTotal(friend.id);
-                if (total === 0) return null;
+              {friends
+                .filter((friend) => selectedParticipants.includes(friend.id))
+                .map((friend) => {
+                  const totalWithOtherPayments =
+                    calculateFriendTotalWithOtherPayments(friend.id);
+                  const itemsTotal = calculateFriendTotal(friend.id);
+                  if (totalWithOtherPayments === 0) return null;
 
-                return (
-                  <View
-                    key={friend.id}
-                    style={[
-                      styles.friendShareCard,
-                      { borderColor: colors.text + "20" },
-                    ]}
-                  >
-                    <View style={styles.friendShareHeader}>
-                      <View
-                        style={[
-                          styles.friendAvatar,
-                          { backgroundColor: friend.accentColor },
-                        ]}
-                      >
-                        <Text style={styles.friendInitial}>
-                          {friend.name.charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                      <View style={styles.friendShareInfo}>
-                        <Text
-                          style={[styles.friendName, { color: colors.text }]}
-                        >
-                          {friend.name}
-                        </Text>
-                        <Text
+                  // Calculate other payments breakdown for this friend
+                  const totalItemsValue =
+                    currentSplitData?.items.reduce(
+                      (sum, item) => sum + item.price * item.qty,
+                      0
+                    ) || 0;
+                  const participantCount = selectedParticipants.length;
+
+                  return (
+                    <View
+                      key={friend.id}
+                      style={[
+                        styles.friendShareCard,
+                        { borderColor: colors.text + "20" },
+                      ]}
+                    >
+                      <View style={styles.friendShareHeader}>
+                        <View
                           style={[
-                            styles.friendShareAmount,
-                            { color: colors.tint },
+                            styles.friendAvatar,
+                            { backgroundColor: friend.accentColor },
                           ]}
                         >
-                          {DataService.formatCurrency(total)}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {/* Show items for this friend */}
-                    {currentSplitData?.items
-                      .filter((item) =>
-                        item.friends.some((f) => f.id === friend.id)
-                      )
-                      .map((item) => {
-                        const friendAssignment = item.friends.find(
-                          (f) => f.id === friend.id
-                        );
-                        if (!friendAssignment) return null;
-
-                        return (
+                          <Text style={styles.friendInitial}>
+                            {friend.name.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={styles.friendShareInfo}>
                           <Text
-                            key={item.id}
+                            style={[styles.friendName, { color: colors.text }]}
+                          >
+                            {friend.name}
+                          </Text>
+                          <Text
                             style={[
-                              styles.friendItemDetail,
-                              { color: colors.text },
+                              styles.friendShareAmount,
+                              { color: colors.tint },
                             ]}
                           >
-                            • {item.name} ({friendAssignment.qty}x) -{" "}
-                            {DataService.formatCurrency(
-                              item.price * friendAssignment.qty
-                            )}
+                            {DataService.formatCurrency(totalWithOtherPayments)}
                           </Text>
-                        );
-                      })}
-                  </View>
-                );
-              })}
+                        </View>
+                      </View>
+
+                      {/* Show items for this friend */}
+                      <Text
+                        style={[
+                          styles.friendBreakdownTitle,
+                          { color: colors.text },
+                        ]}
+                      >
+                        Items:
+                      </Text>
+                      {currentSplitData?.items
+                        .filter((item) =>
+                          item.friends.some((f) => f.id === friend.id)
+                        )
+                        .map((item) => {
+                          const friendAssignment = item.friends.find(
+                            (f) => f.id === friend.id
+                          );
+                          if (!friendAssignment) return null;
+
+                          return (
+                            <Text
+                              key={item.id}
+                              style={[
+                                styles.friendItemDetail,
+                                { color: colors.text },
+                              ]}
+                            >
+                              • {item.name} ({friendAssignment.qty}x) -{" "}
+                              {DataService.formatCurrency(
+                                item.price * friendAssignment.qty
+                              )}
+                            </Text>
+                          );
+                        })}
+
+                      {/* Show other payments breakdown */}
+                      {currentSplitData?.otherPayments &&
+                        currentSplitData.otherPayments.length > 0 && (
+                          <>
+                            <Text
+                              style={[
+                                styles.friendBreakdownTitle,
+                                { color: colors.text, marginTop: 8 },
+                              ]}
+                            >
+                              Other Payments:
+                            </Text>
+                            {currentSplitData.otherPayments.map((other) => {
+                              let amount = other.amount;
+                              if (other.usePercentage) {
+                                amount = (totalItemsValue * other.amount) / 100;
+                              }
+
+                              let friendAmount = 0;
+                              if (other.type === "tax") {
+                                // Tax is calculated proportionally based on participant's item total
+                                friendAmount =
+                                  (itemsTotal * amount) / totalItemsValue;
+                              } else {
+                                // Additions and discounts are split equally among participants
+                                friendAmount = amount / participantCount;
+                                if (other.type === "discount") {
+                                  friendAmount = -friendAmount;
+                                }
+                              }
+
+                              const displayAmount = other.usePercentage
+                                ? `${other.amount}%`
+                                : DataService.formatCurrency(amount);
+
+                              return (
+                                <Text
+                                  key={other.id}
+                                  style={[
+                                    styles.friendItemDetail,
+                                    { color: colors.text },
+                                  ]}
+                                >
+                                  • {other.name} ({displayAmount}) -{" "}
+                                  {friendAmount >= 0 ? "+" : ""}
+                                  {DataService.formatCurrency(friendAmount)}
+                                </Text>
+                              );
+                            })}
+                          </>
+                        )}
+
+                      {/* Subtotal line if there are other payments */}
+                      {currentSplitData?.otherPayments &&
+                        currentSplitData.otherPayments.length > 0 && (
+                          <View
+                            style={[
+                              styles.friendSubtotalLine,
+                              { borderTopColor: colors.text + "20" },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.friendSubtotalText,
+                                { color: colors.text },
+                              ]}
+                            >
+                              Items Subtotal:{" "}
+                              {DataService.formatCurrency(itemsTotal)}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.friendSubtotalText,
+                                { color: colors.tint, fontWeight: "600" },
+                              ]}
+                            >
+                              Final Total:{" "}
+                              {DataService.formatCurrency(
+                                totalWithOtherPayments
+                              )}
+                            </Text>
+                          </View>
+                        )}
+                    </View>
+                  );
+                })}
 
               {/* Bank Information */}
               {bankName && (
@@ -1449,41 +1678,126 @@ export function UnifiedSplitScreen({
                 ))}
               </View>
 
-              <View style={styles.sheetRow}>
-                <TextInput
-                  style={[
-                    styles.sheetInput,
-                    styles.priceInput,
-                    { borderColor: colors.text + "30", color: colors.text },
-                  ]}
-                  value={otherAmount}
-                  onChangeText={setOtherAmount}
-                  placeholder="Amount"
-                  placeholderTextColor={colors.text + "60"}
-                  keyboardType="numeric"
-                />
-                <TouchableOpacity
-                  style={[
-                    styles.percentageToggle,
-                    {
-                      backgroundColor: otherUsePercentage
-                        ? colors.tint
-                        : "transparent",
-                      borderColor: colors.text + "30",
-                    },
-                  ]}
-                  onPress={() => setOtherUsePercentage(!otherUsePercentage)}
-                >
-                  <Text
+              {/* Side-by-side amount input and toggle */}
+              <View style={styles.formSection}>
+                <Text style={[styles.amountLabel, { color: colors.text }]}>
+                  Amount
+                </Text>
+
+                <View style={styles.amountInputRow}>
+                  {/* Amount Input - Left Side */}
+                  <View style={styles.amountInputContainer}>
+                    <View style={styles.inputContainer}>
+                      {!otherUsePercentage && (
+                        <View style={styles.currencyPrefixContainer}>
+                          <Text
+                            style={[
+                              styles.currencyPrefix,
+                              { color: colors.text + "60" },
+                            ]}
+                          >
+                            Rp
+                          </Text>
+                        </View>
+                      )}
+                      <TextInput
+                        style={[
+                          styles.sheetInput,
+                          styles.amountInput,
+                          !otherUsePercentage
+                            ? styles.amountInputWithPrefix
+                            : styles.amountInputWithSuffix,
+                          {
+                            borderColor: colors.text + "30",
+                            color: colors.text,
+                          },
+                        ]}
+                        value={otherAmount}
+                        onChangeText={setOtherAmount}
+                        placeholder={otherUsePercentage ? "10" : "15000"}
+                        placeholderTextColor={colors.text + "60"}
+                        keyboardType="numeric"
+                      />
+                      {otherUsePercentage && (
+                        <View style={styles.percentageSuffixContainer}>
+                          <Text
+                            style={[
+                              styles.percentageSuffix,
+                              { color: colors.text + "60" },
+                            ]}
+                          >
+                            %
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Toggle Switch - Right Side */}
+                  <View
                     style={[
-                      styles.percentageText,
-                      { color: otherUsePercentage ? "#fff" : colors.text },
+                      styles.compactToggleContainer,
+                      { borderColor: colors.tint },
                     ]}
                   >
-                    %
-                  </Text>
-                </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.compactToggleOption,
+                        styles.compactToggleLeft,
+                        {
+                          backgroundColor: !otherUsePercentage
+                            ? colors.tint
+                            : "transparent",
+                          borderColor: colors.tint,
+                        },
+                      ]}
+                      onPress={() => setOtherUsePercentage(false)}
+                    >
+                      <Text
+                        style={[
+                          styles.compactToggleText,
+                          { color: !otherUsePercentage ? "#fff" : colors.tint },
+                        ]}
+                      >
+                        Rp
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.compactToggleOption,
+                        styles.compactToggleRight,
+                        {
+                          backgroundColor: otherUsePercentage
+                            ? colors.tint
+                            : "transparent",
+                          borderColor: colors.tint,
+                        },
+                      ]}
+                      onPress={() => setOtherUsePercentage(true)}
+                    >
+                      <Text
+                        style={[
+                          styles.compactToggleText,
+                          { color: otherUsePercentage ? "#fff" : colors.tint },
+                        ]}
+                      >
+                        %
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
+
+              {/* Help text explaining the calculation */}
+              <Text style={[styles.helpText, { color: colors.text + "70" }]}>
+                {otherType === "tax"
+                  ? otherUsePercentage
+                    ? "Tax will be calculated proportionally based on each person's share of items"
+                    : "Tax amount will be split proportionally based on each person's share of items"
+                  : otherUsePercentage
+                  ? "This amount will be calculated from total items value and split equally among all participants"
+                  : "This amount will be split equally among all participants"}
+              </Text>
             </View>
 
             <TouchableOpacity
@@ -2111,6 +2425,7 @@ const styles = StyleSheet.create({
   },
   sheetInput: {
     height: 48,
+    width: "100%",
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 16,
@@ -2159,16 +2474,17 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   percentageToggle: {
-    width: 48,
+    width: 60,
     height: 48,
     borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
+    borderWidth: 2,
+    marginLeft: 8,
   },
   percentageText: {
-    fontSize: 16,
-    fontWeight: "500",
+    fontSize: 14,
+    fontWeight: "600",
   },
   friendsSelectionContainer: {
     marginBottom: 20,
@@ -2514,5 +2830,179 @@ const styles = StyleSheet.create({
     padding: 16,
     borderTopWidth: 1,
     borderTopColor: "#f0f0f0",
+  },
+  // Friend breakdown styles for share step
+  friendBreakdownTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 8,
+    marginBottom: 4,
+    paddingLeft: 52,
+  },
+  friendSubtotalLine: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    paddingLeft: 52,
+  },
+  friendSubtotalText: {
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  // Enhanced Other Payments form styles
+  formSection: {
+    marginBottom: 20,
+  },
+  amountLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  amountInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  inputContainer: {
+    position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  amountInputContainer: {
+    flex: 1,
+    flexGrow: 1,
+  },
+  currencyPrefix: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#666",
+  },
+  priceInputWithPrefix: {
+    paddingLeft: 40,
+  },
+  percentageSuffix: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#666",
+  },
+  helpText: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 12,
+    fontStyle: "italic",
+  },
+  toggleExplanation: {
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 4,
+    textAlign: "center",
+    fontStyle: "italic",
+  },
+  // Enhanced Toggle Switch Styles
+  toggleSwitchContainer: {
+    flexDirection: "row",
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 20,
+    overflow: "hidden",
+    height: 48,
+  },
+  toggleOption: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  toggleOptionLeft: {
+    borderTopLeftRadius: 7,
+    borderBottomLeftRadius: 7,
+    borderRightWidth: 0.5,
+  },
+  toggleOptionRight: {
+    borderTopRightRadius: 7,
+    borderBottomRightRadius: 7,
+    borderLeftWidth: 0.5,
+  },
+  toggleOptionText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  // Compact Toggle Switch Styles (for side-by-side layout)
+  compactToggleContainer: {
+    flexDirection: "row",
+    borderRadius: 8,
+    borderWidth: 1,
+    overflow: "hidden",
+    height: 48,
+    width: 120,
+  },
+  compactToggleOption: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  compactToggleLeft: {
+    borderTopLeftRadius: 7,
+    borderBottomLeftRadius: 7,
+    borderRightWidth: 0.5,
+  },
+  compactToggleRight: {
+    borderTopRightRadius: 7,
+    borderBottomRightRadius: 7,
+    borderLeftWidth: 0.5,
+  },
+  compactToggleText: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  // Enhanced Amount Input Styles
+  amountInputWrapper: {
+    marginBottom: 20,
+  },
+  amountInput: {
+    height: 48,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    textAlign: "center",
+    marginBottom: 0,
+  },
+  percentageInput: {
+    paddingRight: 40,
+    textAlign: "left",
+  },
+  amountInputWithPrefix: {
+    paddingLeft: 50,
+    textAlign: "left",
+  },
+  amountInputWithSuffix: {
+    paddingRight: 40,
+    textAlign: "left",
+  },
+  currencyPrefixContainer: {
+    position: "absolute",
+    left: 1,
+    top: 1,
+    bottom: 1,
+    width: 48,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1,
+    backgroundColor: "transparent",
+  },
+  percentageSuffixContainer: {
+    position: "absolute",
+    right: 1,
+    top: 1,
+    bottom: 1,
+    width: 38,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1,
+    backgroundColor: "transparent",
   },
 });
