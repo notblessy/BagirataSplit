@@ -73,6 +73,10 @@ export function UnifiedSplitScreen({
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
   const [currentAssignmentItem, setCurrentAssignmentItem] =
     useState<AssignedItem | null>(null);
+  const [friendQuantities, setFriendQuantities] = useState<{
+    [friendId: string]: number;
+  }>({});
+  const [showAssignmentSheet, setShowAssignmentSheet] = useState(false);
 
   // Participant management states
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>(
@@ -260,7 +264,7 @@ export function UnifiedSplitScreen({
           createdAt: friend.createdAt,
         })),
       items: items,
-      otherPayments: [],
+      otherPayments: currentSplitData?.otherPayments || [],
       createdAt: new Date(),
     };
 
@@ -286,7 +290,8 @@ export function UnifiedSplitScreen({
         Alert.alert("Error", "Split name cannot exceed 25 characters");
         return;
       }
-      setCurrentStep("assign"); // Skip bank step
+
+      setCurrentStep("assign");
     } else if (currentStep === "assign") {
       setCurrentStep("share");
     } else if (currentStep === "share") {
@@ -461,6 +466,18 @@ export function UnifiedSplitScreen({
         ...currentSplitData,
         otherPayments: [...currentSplitData.otherPayments, newOther],
       });
+    } else {
+      // For manual entry, create a temporary split data structure
+      const tempSplitData: SplitItem = {
+        id: Date.now().toString(),
+        name: splitName || "New Split",
+        status: "draft",
+        friends: [],
+        items: items,
+        otherPayments: [newOther],
+        createdAt: new Date(),
+      };
+      setCurrentSplitData(tempSplitData);
     }
 
     setOtherName("");
@@ -497,16 +514,87 @@ export function UnifiedSplitScreen({
 
   // Assignment functions
   const toggleFriendSelection = (friendId: string) => {
-    setSelectedFriends((prev) =>
-      prev.includes(friendId)
-        ? prev.filter((id) => id !== friendId)
-        : [...prev, friendId]
+    setSelectedFriends((prev) => {
+      const isCurrentlySelected = prev.includes(friendId);
+      let newSelection;
+
+      if (isCurrentlySelected) {
+        newSelection = prev.filter((id) => id !== friendId);
+        // Remove quantity when deselecting
+        setFriendQuantities((prevQuantities) => {
+          const newQuantities = { ...prevQuantities };
+          delete newQuantities[friendId];
+          return newQuantities;
+        });
+      } else {
+        newSelection = [...prev, friendId];
+        // Set default quantity of 1 when selecting
+        setFriendQuantities((prevQuantities) => ({
+          ...prevQuantities,
+          [friendId]: 1,
+        }));
+      }
+
+      return newSelection;
+    });
+  };
+
+  const updateFriendQuantity = (friendId: string, quantity: number) => {
+    setFriendQuantities((prev) => ({
+      ...prev,
+      [friendId]: Math.max(0, quantity),
+    }));
+  };
+
+  const getTotalAssignedQuantity = () => {
+    return Object.values(friendQuantities).reduce((sum, qty) => sum + qty, 0);
+  };
+
+  const getRemainingQuantity = () => {
+    if (!currentAssignmentItem) return 0;
+    return currentAssignmentItem.qty - getTotalAssignedQuantity();
+  };
+
+  const canAssignItem = () => {
+    return (
+      selectedFriends.length > 0 &&
+      getTotalAssignedQuantity() <= (currentAssignmentItem?.qty || 0) &&
+      getTotalAssignedQuantity() > 0
     );
+  };
+
+  const assignEqually = () => {
+    if (!currentAssignmentItem || selectedParticipants.length === 0) return;
+
+    // Select all participants and assign equal quantities
+    const newQuantities: { [friendId: string]: number } = {};
+    const equalShare = currentAssignmentItem.qty / selectedParticipants.length;
+
+    selectedParticipants.forEach((participantId) => {
+      newQuantities[participantId] = equalShare;
+    });
+
+    setSelectedFriends(selectedParticipants);
+    setFriendQuantities(newQuantities);
   };
 
   const assignItemToFriends = (item: AssignedItem) => {
     if (selectedFriends.length === 0) {
       Alert.alert("Error", "Please select at least one friend");
+      return;
+    }
+
+    const totalAssigned = getTotalAssignedQuantity();
+    if (totalAssigned > item.qty) {
+      Alert.alert(
+        "Error",
+        `Cannot assign ${totalAssigned} items when only ${item.qty} are available`
+      );
+      return;
+    }
+
+    if (totalAssigned === 0) {
+      Alert.alert("Error", "Please assign at least 1 item to someone");
       return;
     }
 
@@ -516,20 +604,22 @@ export function UnifiedSplitScreen({
       if (splitItem.id === item.id) {
         return {
           ...splitItem,
-          friends: selectedFriends.map((friendId) => {
-            const friend = friends.find((f) => f.id === friendId);
-            return {
-              id: friendId,
-              friendId: friendId,
-              name: friend?.name || "",
-              me: friend?.me || false,
-              accentColor: friend?.accentColor || "#007AFF",
-              qty: Math.floor(item.qty / selectedFriends.length), // Split equally for now
-              subTotal:
-                Math.floor(item.qty / selectedFriends.length) * item.price,
-              createdAt: friend?.createdAt || new Date(),
-            };
-          }),
+          friends: selectedFriends
+            .map((friendId) => {
+              const friend = friends.find((f) => f.id === friendId);
+              const assignedQty = friendQuantities[friendId] || 0;
+              return {
+                id: friendId,
+                friendId: friendId,
+                name: friend?.name || "",
+                me: friend?.me || false,
+                accentColor: friend?.accentColor || "#007AFF",
+                qty: assignedQty,
+                subTotal: assignedQty * item.price,
+                createdAt: friend?.createdAt || new Date(),
+              };
+            })
+            .filter((f) => f.qty > 0), // Only include friends with assigned quantities
         };
       }
       return splitItem;
@@ -537,6 +627,7 @@ export function UnifiedSplitScreen({
 
     setCurrentSplitData({ ...currentSplitData, items: updatedItems });
     setSelectedFriends([]);
+    setFriendQuantities({});
     setCurrentAssignmentItem(null);
   };
 
@@ -849,54 +940,53 @@ export function UnifiedSplitScreen({
             </View>
 
             {/* Other Payments Section */}
-            {currentSplitData && (
-              <View style={styles.section}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                  Other Payments ({currentSplitData.otherPayments.length})
-                </Text>
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                Other Payments ({(currentSplitData?.otherPayments || []).length}
+                )
+              </Text>
 
-                {currentSplitData.otherPayments.map((other) => (
-                  <View
-                    key={other.id}
-                    style={[
-                      styles.otherCard,
-                      { borderColor: colors.text + "20" },
-                    ]}
-                  >
-                    <View style={styles.otherHeader}>
-                      <Text style={[styles.otherName, { color: colors.text }]}>
-                        {other.name} ({other.type})
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => deleteOther(other.id)}
-                        style={styles.actionButton}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={16}
-                          color="#ff4444"
-                        />
-                      </TouchableOpacity>
-                    </View>
-                    <Text style={[styles.otherAmount, { color: colors.text }]}>
-                      {other.usePercentage
-                        ? `${other.amount}%`
-                        : DataService.formatCurrency(other.amount)}
-                    </Text>
-                  </View>
-                ))}
-
-                <TouchableOpacity
-                  style={[styles.addButton, { borderColor: colors.tint }]}
-                  onPress={() => setShowAddOtherSheet(true)}
+              {(currentSplitData?.otherPayments || []).map((other) => (
+                <View
+                  key={other.id}
+                  style={[
+                    styles.otherCard,
+                    { borderColor: colors.text + "20" },
+                  ]}
                 >
-                  <Ionicons name="add" size={20} color={colors.tint} />
-                  <Text style={[styles.addButtonText, { color: colors.tint }]}>
-                    Add Other Payment
+                  <View style={styles.otherHeader}>
+                    <Text style={[styles.otherName, { color: colors.text }]}>
+                      {other.name} ({other.type})
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => deleteOther(other.id)}
+                      style={styles.actionButton}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={16}
+                        color="#ff4444"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={[styles.otherAmount, { color: colors.text }]}>
+                    {other.usePercentage
+                      ? `${other.amount}%`
+                      : DataService.formatCurrency(other.amount)}
                   </Text>
-                </TouchableOpacity>
-              </View>
-            )}
+                </View>
+              ))}
+
+              <TouchableOpacity
+                style={[styles.addButton, { borderColor: colors.tint }]}
+                onPress={() => setShowAddOtherSheet(true)}
+              >
+                <Ionicons name="add" size={20} color={colors.tint} />
+                <Text style={[styles.addButtonText, { color: colors.tint }]}>
+                  Add Other Payment
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Total */}
             <View style={styles.section}>
@@ -977,28 +1067,85 @@ export function UnifiedSplitScreen({
               )}
             </View>
 
-            {currentAssignmentItem ? (
-              <View style={styles.section}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                  Assigning: {currentAssignmentItem.name}
-                </Text>
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                Items to Assign
+              </Text>
 
-                <View style={styles.friendsSelectionContainer}>
-                  {friends.map((friend) => (
+              {currentSplitData?.items.map((item) => (
+                <View
+                  key={item.id}
+                  style={[
+                    styles.itemAssignCard,
+                    { borderColor: colors.text + "20" },
+                  ]}
+                >
+                  <View style={styles.itemAssignHeader}>
+                    <View>
+                      <Text style={[styles.itemName, { color: colors.text }]}>
+                        {item.name}
+                      </Text>
+                      <Text style={[styles.itemPrice, { color: colors.text }]}>
+                        {DataService.formatCurrency(item.price)} × {item.qty}
+                      </Text>
+                    </View>
                     <TouchableOpacity
+                      style={[
+                        styles.assignItemButton,
+                        { backgroundColor: colors.tint },
+                      ]}
+                      onPress={() => {
+                        setCurrentAssignmentItem(item);
+                        setSelectedFriends([]);
+                        setFriendQuantities({});
+                        setShowAssignmentSheet(true);
+                      }}
+                    >
+                      <Text style={styles.assignItemButtonText}>
+                        {item.friends.length > 0 ? "Re-assign" : "Assign"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {item.friends.length > 0 && (
+                    <View style={styles.assignedFriends}>
+                      <Text
+                        style={[styles.assignedLabel, { color: colors.text }]}
+                      >
+                        Assigned to:
+                      </Text>
+                      {item.friends.map((assignedFriend) => (
+                        <Text
+                          key={assignedFriend.id}
+                          style={[
+                            styles.assignedFriendName,
+                            { color: colors.tint },
+                          ]}
+                        >
+                          {assignedFriend.name} ({assignedFriend.qty}x)
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                Friends Summary
+              </Text>
+              {friends
+                .filter((friend) => selectedParticipants.includes(friend.id))
+                .map((friend) => {
+                  const total = calculateFriendTotal(friend.id);
+                  return (
+                    <View
                       key={friend.id}
                       style={[
-                        styles.friendSelectionCard,
-                        {
-                          borderColor: selectedFriends.includes(friend.id)
-                            ? colors.tint
-                            : colors.text + "20",
-                          backgroundColor: selectedFriends.includes(friend.id)
-                            ? colors.tint + "10"
-                            : "transparent",
-                        },
+                        styles.friendSummaryCard,
+                        { borderColor: colors.text + "20" },
                       ]}
-                      onPress={() => toggleFriendSelection(friend.id)}
                     >
                       <View
                         style={[
@@ -1010,161 +1157,22 @@ export function UnifiedSplitScreen({
                           {friend.name.charAt(0).toUpperCase()}
                         </Text>
                       </View>
-                      <Text style={[styles.friendName, { color: colors.text }]}>
-                        {friend.name}
-                      </Text>
-                      {selectedFriends.includes(friend.id) && (
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={20}
-                          color={colors.tint}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <View style={styles.assignmentActions}>
-                  <TouchableOpacity
-                    style={[
-                      styles.assignButton,
-                      { backgroundColor: colors.tint },
-                    ]}
-                    onPress={() => assignItemToFriends(currentAssignmentItem)}
-                  >
-                    <Text style={styles.assignButtonText}>
-                      Assign to Selected Friends
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.cancelButton,
-                      { borderColor: colors.text + "30" },
-                    ]}
-                    onPress={() => {
-                      setCurrentAssignmentItem(null);
-                      setSelectedFriends([]);
-                    }}
-                  >
-                    <Text
-                      style={[styles.cancelButtonText, { color: colors.text }]}
-                    >
-                      Cancel
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <>
-                <View style={styles.section}>
-                  <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                    Items to Assign
-                  </Text>
-
-                  {currentSplitData?.items.map((item) => (
-                    <View
-                      key={item.id}
-                      style={[
-                        styles.itemAssignCard,
-                        { borderColor: colors.text + "20" },
-                      ]}
-                    >
-                      <View style={styles.itemAssignHeader}>
-                        <View>
-                          <Text
-                            style={[styles.itemName, { color: colors.text }]}
-                          >
-                            {item.name}
-                          </Text>
-                          <Text
-                            style={[styles.itemPrice, { color: colors.text }]}
-                          >
-                            {DataService.formatCurrency(item.price)} ×{" "}
-                            {item.qty}
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          style={[
-                            styles.assignItemButton,
-                            { backgroundColor: colors.tint },
-                          ]}
-                          onPress={() => setCurrentAssignmentItem(item)}
+                      <View style={styles.friendSummaryInfo}>
+                        <Text
+                          style={[styles.friendName, { color: colors.text }]}
                         >
-                          <Text style={styles.assignItemButtonText}>
-                            Assign
-                          </Text>
-                        </TouchableOpacity>
+                          {friend.name}
+                        </Text>
+                        <Text
+                          style={[styles.friendTotal, { color: colors.tint }]}
+                        >
+                          {DataService.formatCurrency(total)}
+                        </Text>
                       </View>
-
-                      {item.friends.length > 0 && (
-                        <View style={styles.assignedFriends}>
-                          <Text
-                            style={[
-                              styles.assignedLabel,
-                              { color: colors.text },
-                            ]}
-                          >
-                            Assigned to:
-                          </Text>
-                          {item.friends.map((assignedFriend) => (
-                            <Text
-                              key={assignedFriend.id}
-                              style={[
-                                styles.assignedFriendName,
-                                { color: colors.tint },
-                              ]}
-                            >
-                              {assignedFriend.name} ({assignedFriend.qty}x)
-                            </Text>
-                          ))}
-                        </View>
-                      )}
                     </View>
-                  ))}
-                </View>
-
-                <View style={styles.section}>
-                  <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                    Friends Summary
-                  </Text>
-                  {friends.map((friend) => {
-                    const total = calculateFriendTotal(friend.id);
-                    return (
-                      <View
-                        key={friend.id}
-                        style={[
-                          styles.friendSummaryCard,
-                          { borderColor: colors.text + "20" },
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.friendAvatar,
-                            { backgroundColor: friend.accentColor },
-                          ]}
-                        >
-                          <Text style={styles.friendInitial}>
-                            {friend.name.charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-                        <View style={styles.friendSummaryInfo}>
-                          <Text
-                            style={[styles.friendName, { color: colors.text }]}
-                          >
-                            {friend.name}
-                          </Text>
-                          <Text
-                            style={[styles.friendTotal, { color: colors.tint }]}
-                          >
-                            {DataService.formatCurrency(total)}
-                          </Text>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              </>
-            )}
+                  );
+                })}
+            </View>
           </View>
         )}
 
@@ -1545,6 +1553,204 @@ export function UnifiedSplitScreen({
             >
               <Text style={styles.sheetButtonText}>Add Bank Info</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Assignment Sheet */}
+      {showAssignmentSheet && currentAssignmentItem && (
+        <View style={styles.overlay}>
+          <View style={[styles.sheet, { backgroundColor: colors.background }]}>
+            <View style={styles.sheetHeader}>
+              <Text style={[styles.sheetTitle, { color: colors.text }]}>
+                Assign: {currentAssignmentItem.name}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowAssignmentSheet(false);
+                  setCurrentAssignmentItem(null);
+                  setSelectedFriends([]);
+                  setFriendQuantities({});
+                }}
+              >
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.sheetContent}>
+              <Text style={[styles.quantityInfo, { color: colors.text }]}>
+                Available: {currentAssignmentItem.qty} | Remaining:{" "}
+                {Math.round(getRemainingQuantity() * 100) / 100}
+              </Text>
+
+              {/* Assign Equally Button */}
+              <TouchableOpacity
+                style={[
+                  styles.equallyButton,
+                  {
+                    backgroundColor: colors.tint + "20",
+                    borderColor: colors.tint,
+                  },
+                ]}
+                onPress={assignEqually}
+              >
+                <Ionicons name="pie-chart" size={20} color={colors.tint} />
+                <Text
+                  style={[styles.equallyButtonText, { color: colors.tint }]}
+                >
+                  Assign Equally to All Participants
+                </Text>
+              </TouchableOpacity>
+
+              <Text
+                style={[
+                  styles.participantsSectionTitle,
+                  { color: colors.text },
+                ]}
+              >
+                Select Participants & Set Quantities:
+              </Text>
+
+              <ScrollView style={styles.assignmentParticipantsList}>
+                {friends
+                  .filter((friend) => selectedParticipants.includes(friend.id))
+                  .map((friend) => (
+                    <TouchableOpacity
+                      key={friend.id}
+                      style={[
+                        styles.assignmentParticipantItem,
+                        {
+                          borderColor: selectedFriends.includes(friend.id)
+                            ? colors.tint
+                            : colors.text + "20",
+                          backgroundColor: selectedFriends.includes(friend.id)
+                            ? colors.tint + "10"
+                            : "transparent",
+                        },
+                      ]}
+                      onPress={() => toggleFriendSelection(friend.id)}
+                    >
+                      <View
+                        style={[
+                          styles.friendAvatar,
+                          { backgroundColor: friend.accentColor },
+                        ]}
+                      >
+                        <Text style={styles.friendInitial}>
+                          {friend.name.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text style={[styles.friendName, { color: colors.text }]}>
+                        {friend.name}
+                      </Text>
+                      {selectedFriends.includes(friend.id) ? (
+                        <View style={styles.quantityControls}>
+                          <TouchableOpacity
+                            style={[
+                              styles.quantityButton,
+                              { borderColor: colors.tint },
+                            ]}
+                            onPress={() => {
+                              const increment =
+                                currentAssignmentItem.qty === 1 ? 0.1 : 1;
+                              updateFriendQuantity(
+                                friend.id,
+                                Math.max(
+                                  0,
+                                  (friendQuantities[friend.id] || 1) - increment
+                                )
+                              );
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.quantityButtonText,
+                                { color: colors.tint },
+                              ]}
+                            >
+                              -
+                            </Text>
+                          </TouchableOpacity>
+                          <Text
+                            style={[
+                              styles.quantityText,
+                              { color: colors.text },
+                            ]}
+                          >
+                            {(friendQuantities[friend.id] || 0) % 1 === 0
+                              ? (friendQuantities[friend.id] || 0).toString()
+                              : (friendQuantities[friend.id] || 0).toFixed(2)}
+                          </Text>
+                          <TouchableOpacity
+                            style={[
+                              styles.quantityButton,
+                              {
+                                borderColor:
+                                  getRemainingQuantity() <= 0
+                                    ? colors.text + "30"
+                                    : colors.tint,
+                                opacity: getRemainingQuantity() <= 0 ? 0.5 : 1,
+                              },
+                            ]}
+                            onPress={() => {
+                              if (getRemainingQuantity() > 0) {
+                                const increment =
+                                  currentAssignmentItem.qty === 1 ? 0.1 : 1;
+                                updateFriendQuantity(
+                                  friend.id,
+                                  (friendQuantities[friend.id] || 0) + increment
+                                );
+                              }
+                            }}
+                            disabled={getRemainingQuantity() <= 0}
+                          >
+                            <Text
+                              style={[
+                                styles.quantityButtonText,
+                                {
+                                  color:
+                                    getRemainingQuantity() <= 0
+                                      ? colors.text + "30"
+                                      : colors.tint,
+                                },
+                              ]}
+                            >
+                              +
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <Ionicons
+                          name="add-circle-outline"
+                          size={20}
+                          color={colors.text + "50"}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+              </ScrollView>
+            </View>
+
+            <View style={styles.assignmentSheetActions}>
+              <TouchableOpacity
+                style={[
+                  styles.assignButton,
+                  {
+                    backgroundColor: canAssignItem()
+                      ? colors.tint
+                      : colors.text + "30",
+                    opacity: canAssignItem() ? 1 : 0.5,
+                  },
+                ]}
+                onPress={() => {
+                  assignItemToFriends(currentAssignmentItem);
+                  setShowAssignmentSheet(false);
+                }}
+                disabled={!canAssignItem()}
+              >
+                <Text style={styles.assignButtonText}>Assign Item</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
@@ -2241,5 +2447,72 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 8,
     fontWeight: "500",
+  },
+  // Quantity assignment styles
+  quantityInfo: {
+    fontSize: 14,
+    opacity: 0.7,
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  quantityControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  quantityButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  quantityButtonText: {
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  quantityText: {
+    fontSize: 16,
+    fontWeight: "600",
+    minWidth: 20,
+    textAlign: "center",
+  },
+  // Assignment sheet styles
+  equallyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 16,
+    justifyContent: "center",
+  },
+  equallyButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  participantsSectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 12,
+  },
+  assignmentParticipantsList: {
+    maxHeight: 300,
+    marginBottom: 16,
+  },
+  assignmentParticipantItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  assignmentSheetActions: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
   },
 });
