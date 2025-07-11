@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,8 +13,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
-import { useRecognizeReceipt } from "../hooks/useSplitApi";
 import { DataService } from "../services/DataService";
+import { DatabaseService } from "../services/DatabaseService";
+import {
+  BagirataApiService,
+  convertRecognitionToAppFormat,
+  convertToBackendFormat,
+} from "../services/BagirataApiService";
 import {
   AssignedFriend,
   AssignedItem,
@@ -92,100 +97,64 @@ export function UnifiedSplitScreen({
   const [participantSearchQuery, setParticipantSearchQuery] = useState("");
   const [filteredFriends, setFilteredFriends] = useState<Friend[]>([]);
 
-  // Use API hook for recognizing receipt text (only for scan flow)
-  const {
-    data: recognizeData,
-    error: recognizeError,
-    isLoading: isRecognizing,
-    recognize,
-  } = useRecognizeReceipt(null);
+  // Recognition states
+  const [isRecognizing, setIsRecognizing] = useState(false);
 
   // Trigger recognition when scannedText is available
+  const handleRecognition = useCallback(
+    async (text: string) => {
+      setIsRecognizing(true);
+      try {
+        const response = await BagirataApiService.recognizeReceipt(text);
+
+        if (response.success) {
+          const { items, otherPayments, splitName } =
+            convertRecognitionToAppFormat(response.data);
+
+          // Create split data from recognition
+          const newSplitData: SplitItem = {
+            id: response.data.id,
+            name: splitName || "Split from Receipt",
+            status: "draft",
+            friends: [],
+            items: items.map((item, index) => ({
+              ...item,
+              id: `${response.data.id}-item-${index}`,
+              createdAt: new Date(),
+              friends: [],
+            })),
+            otherPayments: otherPayments.map((other, index) => ({
+              ...other,
+              id: `${response.data.id}-other-${index}`,
+              createdAt: new Date(),
+            })),
+            createdAt: new Date(response.data.createdAt),
+          };
+
+          setCurrentSplitData(newSplitData);
+          setSplitName(newSplitData.name);
+        } else {
+          throw new Error(response.message || "Recognition failed");
+        }
+      } catch (error: any) {
+        console.error("Recognition error:", error);
+        Alert.alert(
+          "Recognition Error",
+          "Failed to recognize receipt. Please try again.",
+          [{ text: "OK", onPress: onBack }]
+        );
+      } finally {
+        setIsRecognizing(false);
+      }
+    },
+    [onBack]
+  );
+
   useEffect(() => {
     if (!isManualEntry && scannedText) {
-      recognize(scannedText);
+      handleRecognition(scannedText);
     }
-  }, [scannedText, isManualEntry, recognize]);
-
-  useEffect(() => {
-    if (recognizeData && recognizeData.success && !isManualEntry) {
-      // Convert recognized data to split format
-      const newSplitData: SplitItem = {
-        id: Date.now().toString(),
-        name: recognizeData.data.merchant_name || "Split from Receipt",
-        status: "draft",
-        friends: friends.map((friend) => ({
-          id: friend.id,
-          friendId: friend.id,
-          name: friend.name,
-          me: friend.me,
-          accentColor: friend.accentColor,
-          qty: 0,
-          subTotal: 0,
-          createdAt: friend.createdAt,
-        })),
-        items: recognizeData.data.items.map((item, index) => ({
-          id: (Date.now() + index).toString(),
-          name: item.name,
-          qty: item.quantity,
-          price: item.price,
-          equal: false,
-          friends: [],
-          createdAt: new Date(),
-        })),
-        otherPayments: [],
-        createdAt: new Date(),
-      };
-
-      // Add tax if available
-      if (recognizeData.data.tax) {
-        newSplitData.otherPayments.push({
-          id: (Date.now() + 1000).toString(),
-          name: "Tax",
-          type: "tax",
-          usePercentage: false,
-          amount: recognizeData.data.tax,
-          createdAt: new Date(),
-        });
-      }
-
-      // Add service charge if available
-      if (recognizeData.data.service_charge) {
-        newSplitData.otherPayments.push({
-          id: (Date.now() + 2000).toString(),
-          name: "Service Charge",
-          type: "addition",
-          usePercentage: false,
-          amount: recognizeData.data.service_charge,
-          createdAt: new Date(),
-        });
-      }
-
-      // Add discount if available
-      if (recognizeData.data.discount) {
-        newSplitData.otherPayments.push({
-          id: (Date.now() + 3000).toString(),
-          name: "Discount",
-          type: "discount",
-          usePercentage: false,
-          amount: recognizeData.data.discount,
-          createdAt: new Date(),
-        });
-      }
-
-      setCurrentSplitData(newSplitData);
-    }
-  }, [recognizeData, isManualEntry, friends]);
-
-  useEffect(() => {
-    if (recognizeError) {
-      Alert.alert(
-        "Recognition Error",
-        "Failed to recognize receipt. Please try again.",
-        [{ text: "OK", onPress: onBack }]
-      );
-    }
-  }, [recognizeError, onBack]);
+  }, [scannedText, isManualEntry, handleRecognition]);
 
   useEffect(() => {
     // Load friends data
@@ -309,7 +278,7 @@ export function UnifiedSplitScreen({
       setCurrentStep("share");
     } else if (currentStep === "share") {
       if (currentSplitData) {
-        onShare(currentSplitData);
+        handleShareSplit();
       }
     }
   };
@@ -321,6 +290,77 @@ export function UnifiedSplitScreen({
       setCurrentStep("review");
     } else if (currentStep === "share") {
       setCurrentStep("assign");
+    }
+  };
+
+  const handleShareSplit = async () => {
+    if (!currentSplitData) return;
+
+    // Show loading
+    setIsRecognizing(true);
+
+    try {
+      // Get participants for the split
+      const participants = friends.filter((friend) =>
+        selectedParticipants.includes(friend.id)
+      );
+
+      // Prepare bank info
+      const bankInfo =
+        bankName && accountNumber && accountName
+          ? {
+              bankName,
+              accountNumber,
+              accountName,
+            }
+          : undefined;
+
+      // Convert to backend format
+      const backendData = convertToBackendFormat(
+        currentSplitData,
+        participants,
+        bankInfo
+      );
+
+      // Save to backend
+      const saveResponse = await BagirataApiService.saveSplit(backendData);
+
+      if (saveResponse.success) {
+        // Save to SQLite for history
+        try {
+          await DatabaseService.saveSplitToHistory(
+            currentSplitData,
+            participants,
+            bankInfo
+          );
+        } catch (sqliteError) {
+          console.warn("Failed to save to SQLite history:", sqliteError);
+          // Don't fail the whole operation if SQLite fails
+        }
+
+        // Success! Call the onShare callback with the share URL
+        onShare({
+          ...currentSplitData,
+          shareUrl: `https://bagirata.notblessy.com/view/${saveResponse.data}`,
+          slug: saveResponse.data,
+        });
+
+        Alert.alert(
+          "Success!",
+          "Split has been saved and shared successfully!",
+          [{ text: "OK" }]
+        );
+      } else {
+        throw new Error("Failed to save split to backend");
+      }
+    } catch (error: any) {
+      console.error("Save split error:", error);
+      Alert.alert("Save Error", "Failed to save split. Please try again.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Retry", onPress: handleShareSplit },
+      ]);
+    } finally {
+      setIsRecognizing(false);
     }
   };
 

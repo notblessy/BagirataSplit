@@ -14,9 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { UnifiedSplitScreen } from "../../components/UnifiedSplitScreen";
 import { Colors } from "../../constants/Colors";
 import { useColorScheme } from "../../hooks/useColorScheme";
-import { useSplitOperations } from "../../hooks/useSplitApi";
 import { ScannerService } from "../../services/ScannerService";
-import { SplitItem } from "../../types";
 
 export default function ScanScreen() {
   const colorScheme = useColorScheme();
@@ -28,12 +26,7 @@ export default function ScanScreen() {
   const [currentScreen, setCurrentScreen] = useState<
     "main" | "split" | "manual"
   >("main");
-  const [scannedImageBase64, setScannedImageBase64] = useState<string | null>(
-    null
-  );
-
-  // API hooks
-  const { createSplit, generateShare } = useSplitOperations();
+  const [scannedText, setScannedText] = useState<string | null>(null);
 
   const handleScanReceipt = async () => {
     setIsScanning(true);
@@ -49,9 +42,9 @@ export default function ScanScreen() {
       // Use actual document scanner
       const scanResult = await ScannerService.scanDocumentWithOCR();
 
-      if (scanResult.success && scanResult.imageBase64) {
-        // Store the scanned image for OCR processing
-        setScannedImageBase64(scanResult.imageBase64);
+      if (scanResult.success && scanResult.text) {
+        // Store the extracted text for recognition processing
+        setScannedText(scanResult.text);
         setCurrentScreen("split");
       } else {
         Alert.alert(
@@ -79,44 +72,27 @@ export default function ScanScreen() {
 
   const handleBackToMain = () => {
     setCurrentScreen("main");
-    setScannedImageBase64(null);
+    setScannedText(null);
   };
 
-  const handleShareSplit = async (splitData: SplitItem) => {
+  const handleShareSplit = async (splitData: any) => {
     try {
-      // Create the split via API
-      const result = await createSplit({
-        name: splitData.name,
-        total_amount: splitData.items.reduce(
-          (sum, item) => sum + item.price * item.qty,
-          0
-        ),
-        items: splitData.items,
-        other_payments: splitData.otherPayments,
-        friends: splitData.friends,
-      });
+      // The UnifiedSplitScreen now handles the backend saving and sharing
+      // splitData will include the shareUrl from the backend response
 
-      if (result.success) {
-        // Generate share content
-        const shareData = await generateShare(result.data.split_id);
-
-        if (shareData.success) {
-          // Use React Native's Share API
-          await Share.share({
-            message: shareData.data.share_text,
-            url: shareData.data.share_url,
-            title: `Split Bill: ${splitData.name}`,
-          });
-        }
-
-        Alert.alert(
-          "Split Shared!",
-          "Your split has been created and shared successfully.",
-          [{ text: "OK", onPress: handleBackToMain }]
-        );
+      if (splitData.shareUrl) {
+        // Use React Native's Share API to share the split
+        await Share.share({
+          message: `Check out this split bill: ${splitData.name}\n\nView and pay your share: ${splitData.shareUrl}`,
+          url: splitData.shareUrl,
+          title: `Split Bill: ${splitData.name}`,
+        });
       }
+
+      // Navigate back to main screen after successful share
+      handleBackToMain();
     } catch (error: any) {
-      console.error("Share split error:", error);
+      console.error("Share error:", error);
       Alert.alert("Share Error", "Failed to share split. Please try again.", [
         { text: "OK" },
       ]);
@@ -127,7 +103,7 @@ export default function ScanScreen() {
   if (currentScreen === "split") {
     return (
       <UnifiedSplitScreen
-        scannedText={scannedImageBase64 || undefined}
+        scannedText={scannedText || undefined}
         isManualEntry={false}
         onBack={handleBackToMain}
         onShare={handleShareSplit}

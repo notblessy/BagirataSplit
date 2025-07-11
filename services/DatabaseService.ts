@@ -322,6 +322,94 @@ export class DatabaseService {
     };
   }
 
+  static async saveSplitToHistory(
+    splitData: {
+      id: string;
+      name: string;
+      items: any[];
+      otherPayments: any[];
+      createdAt: Date;
+    },
+    participants: Friend[],
+    bankInfo?: {
+      bankName: string;
+      accountNumber: string;
+      accountName: string;
+    }
+  ): Promise<void> {
+    await this.ensureInitialized();
+    if (!this.db) throw new Error("Database not initialized");
+
+    const createdAtStr = splitData.createdAt.toISOString();
+
+    // Insert split bill
+    await this.db.runAsync(
+      "INSERT OR REPLACE INTO split_bills (id, name, createdAt) VALUES (?, ?, ?)",
+      [splitData.id, splitData.name, createdAtStr]
+    );
+
+    // Calculate totals for each participant
+    for (const participant of participants) {
+      let subTotal = 0;
+      let total = 0;
+
+      // Calculate items total for this participant
+      splitData.items.forEach((item: any) => {
+        const assignment = item.friends?.find(
+          (f: any) => f.friendId === participant.id
+        );
+        if (assignment) {
+          subTotal += item.price * assignment.qty;
+        }
+      });
+
+      // Calculate other payments total for this participant
+      const totalItemsValue = splitData.items.reduce(
+        (sum: number, item: any) => sum + item.price * item.qty,
+        0
+      );
+      const participantCount = participants.length;
+
+      splitData.otherPayments?.forEach((other: any) => {
+        let amount = other.amount;
+        if (other.usePercentage) {
+          amount = (totalItemsValue * other.amount) / 100;
+        }
+
+        let friendAmount = 0;
+        if (other.type === "tax") {
+          friendAmount = (subTotal * amount) / totalItemsValue;
+        } else {
+          friendAmount = amount / participantCount;
+          if (other.type === "discount") {
+            friendAmount = -friendAmount;
+          }
+        }
+
+        total += friendAmount;
+      });
+
+      total += subTotal;
+
+      // Insert split bill friend
+      const friendId = `${splitData.id}-${participant.id}`;
+      await this.db.runAsync(
+        "INSERT OR REPLACE INTO split_bill_friends (id, splitBillId, friendId, name, accentColor, total, subTotal, me, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+          friendId,
+          splitData.id,
+          participant.id,
+          participant.name,
+          participant.accentColor,
+          total,
+          subTotal,
+          participant.me ? 1 : 0,
+          participant.createdAt.toISOString(),
+        ]
+      );
+    }
+  }
+
   // Utility methods
   static formatCurrency(amount: number): string {
     return new Intl.NumberFormat("id-ID", {

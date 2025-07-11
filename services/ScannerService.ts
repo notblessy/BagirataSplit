@@ -1,5 +1,6 @@
 import { Alert, Platform, PermissionsAndroid } from "react-native";
 import DocumentScanner from "react-native-document-scanner-plugin";
+import { OCRService } from "./OCRService";
 
 export interface ScanResult {
   scannedImages: string[];
@@ -120,6 +121,7 @@ export class ScannerService {
    */
   static async scanDocumentWithOCR(): Promise<{
     success: boolean;
+    text?: string;
     imageBase64?: string;
     originalUri?: string;
     message?: string;
@@ -142,11 +144,22 @@ export class ScannerService {
       const imageUri = scanResult.scannedImages[0];
       const imageBase64 = await this.convertImageToBase64(imageUri);
 
+      // Step 3: Extract text using OCR
+      const ocrResult = await OCRService.extractTextFromImage(imageBase64);
+
+      if (!ocrResult.success) {
+        return {
+          success: false,
+          message: ocrResult.error || "Failed to extract text from image",
+        };
+      }
+
       return {
         success: true,
+        text: ocrResult.text,
         imageBase64,
         originalUri: imageUri,
-        message: "Document scanned successfully",
+        message: "Document scanned and text extracted successfully",
       };
     } catch (error: any) {
       console.error("Scan workflow error:", error);
