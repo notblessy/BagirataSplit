@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import HistoryDetailPage from "../../components/HistoryDetailPage";
 import ProfileSheet from "../../components/ProfileSheet";
 import { ThemedText } from "../../components/ThemedText";
 import { ThemedView } from "../../components/ThemedView";
@@ -32,6 +33,8 @@ export default function HistoryScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [displayCount, setDisplayCount] = useState(5);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
+  const [selectedSplit, setSelectedSplit] = useState<Splitted | null>(null);
+  const [showDetailPage, setShowDetailPage] = useState(false);
 
   // Initialize database and load data
   useEffect(() => {
@@ -63,17 +66,8 @@ export default function HistoryScreen() {
   };
 
   const handleSplitPress = (split: Splitted) => {
-    Alert.alert(
-      split.name,
-      `Split bill details for ${split.friends.length} people`,
-      [
-        { text: "Close", style: "cancel" },
-        {
-          text: "View Details",
-          onPress: () => console.log("View detail:", split.id),
-        },
-      ]
-    );
+    setSelectedSplit(split);
+    setShowDetailPage(true);
   };
   const getTotalAmount = (split: Splitted): number => {
     return split.friends.reduce((sum, friend) => sum + (friend.total || 0), 0);
@@ -337,6 +331,18 @@ export default function HistoryScreen() {
           }}
         />
       </Modal>
+
+      {/* History Detail Page Modal */}
+      {selectedSplit && (
+        <HistoryDetailPage
+          split={selectedSplit}
+          visible={showDetailPage}
+          onClose={() => {
+            setShowDetailPage(false);
+            setSelectedSplit(null);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }

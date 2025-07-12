@@ -1540,25 +1540,51 @@ export function UnifiedSplitScreen({
                       key={friend.id}
                       style={[
                         styles.friendShareCard,
-                        { borderColor: colors.text + "20" },
+                        {
+                          backgroundColor:
+                            colorScheme === "dark" ? "#262626" : "#f8f9fa",
+                          borderColor:
+                            colorScheme === "dark" ? "#3A3A3C" : "#e0e0e0",
+                        },
                       ]}
                     >
+                      {/* Friend Header */}
                       <View style={styles.friendShareHeader}>
-                        <View
-                          style={[
-                            styles.friendAvatar,
-                            { backgroundColor: friend.accentColor },
-                          ]}
-                        >
-                          <Text style={styles.friendInitial}>
-                            {friend.name.charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-                        <View style={styles.friendShareInfo}>
-                          <Text
-                            style={[styles.friendName, { color: colors.text }]}
+                        <View style={styles.friendHeaderLeft}>
+                          <View
+                            style={[
+                              styles.friendAvatar,
+                              { backgroundColor: friend.accentColor },
+                            ]}
                           >
-                            {friend.name}
+                            <Text style={styles.friendInitial}>
+                              {friend.name.charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={styles.friendShareInfo}>
+                            <Text
+                              style={[
+                                styles.friendName,
+                                { color: colors.text },
+                              ]}
+                            >
+                              {friend.name} {friend.me && "(You)"}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.friendSubtotal,
+                                { color: colors.text },
+                              ]}
+                            >
+                              Subtotal: {DataService.formatCurrency(itemsTotal)}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.friendTotal}>
+                          <Text
+                            style={[styles.totalLabel, { color: colors.text }]}
+                          >
+                            Total
                           </Text>
                           <Text
                             style={[
@@ -1571,124 +1597,127 @@ export function UnifiedSplitScreen({
                         </View>
                       </View>
 
-                      {/* Show items for this friend */}
-                      <Text
-                        style={[
-                          styles.friendBreakdownTitle,
-                          { color: colors.text },
-                        ]}
-                      >
-                        Items:
-                      </Text>
-                      {currentSplitData?.items
-                        .filter((item) =>
-                          item.friends.some((f) => f.id === friend.id)
-                        )
-                        .map((item) => {
-                          const friendAssignment = item.friends.find(
-                            (f) => f.id === friend.id
-                          );
-                          if (!friendAssignment) return null;
+                      {/* Calculation Breakdown */}
+                      <View style={styles.breakdownSection}>
+                        {/* Show items for this friend */}
+                        <Text
+                          style={[
+                            styles.friendBreakdownTitle,
+                            { color: colors.text },
+                          ]}
+                        >
+                          Items:
+                        </Text>
+                        {currentSplitData?.items
+                          .filter((item) =>
+                            item.friends.some((f) => f.id === friend.id)
+                          )
+                          .map((item) => {
+                            const friendAssignment = item.friends.find(
+                              (f) => f.id === friend.id
+                            );
+                            if (!friendAssignment) return null;
 
-                          return (
-                            <Text
-                              key={item.id}
-                              style={[
-                                styles.friendItemDetail,
-                                { color: colors.text },
-                              ]}
-                            >
-                              • {item.name} ({friendAssignment.qty}x) -{" "}
-                              {DataService.formatCurrency(
-                                item.price * friendAssignment.qty
-                              )}
-                            </Text>
-                          );
-                        })}
+                            return (
+                              <Text
+                                key={item.id}
+                                style={[
+                                  styles.friendItemDetail,
+                                  { color: colors.text },
+                                ]}
+                              >
+                                • {item.name} ({friendAssignment.qty}x) -{" "}
+                                {DataService.formatCurrency(
+                                  item.price * friendAssignment.qty
+                                )}
+                              </Text>
+                            );
+                          })}
 
-                      {/* Show other payments breakdown */}
-                      {currentSplitData?.otherPayments &&
-                        currentSplitData.otherPayments.length > 0 && (
-                          <>
-                            <Text
-                              style={[
-                                styles.friendBreakdownTitle,
-                                { color: colors.text, marginTop: 8 },
-                              ]}
-                            >
-                              Other Payments:
-                            </Text>
-                            {currentSplitData.otherPayments.map((other) => {
-                              let amount = other.amount;
-                              if (other.usePercentage) {
-                                amount = (totalItemsValue * other.amount) / 100;
-                              }
-
-                              let friendAmount = 0;
-                              if (other.type === "tax") {
-                                // Tax is calculated proportionally based on participant's item total
-                                friendAmount =
-                                  (itemsTotal * amount) / totalItemsValue;
-                              } else {
-                                // Additions and discounts are split equally among participants
-                                friendAmount = amount / participantCount;
-                                if (other.type === "discount") {
-                                  friendAmount = -friendAmount;
+                        {/* Show other payments breakdown */}
+                        {currentSplitData?.otherPayments &&
+                          currentSplitData.otherPayments.length > 0 && (
+                            <>
+                              <Text
+                                style={[
+                                  styles.friendBreakdownTitle,
+                                  { color: colors.text, marginTop: 8 },
+                                ]}
+                              >
+                                Other Payments:
+                              </Text>
+                              {currentSplitData.otherPayments.map((other) => {
+                                let amount = other.amount;
+                                if (other.usePercentage) {
+                                  amount =
+                                    (totalItemsValue * other.amount) / 100;
                                 }
-                              }
 
-                              const displayAmount = other.usePercentage
-                                ? `${other.amount}%`
-                                : DataService.formatCurrency(amount);
+                                let friendAmount = 0;
+                                if (other.type === "tax") {
+                                  // Tax is calculated proportionally based on participant's item total
+                                  friendAmount =
+                                    (itemsTotal * amount) / totalItemsValue;
+                                } else {
+                                  // Additions and discounts are split equally among participants
+                                  friendAmount = amount / participantCount;
+                                  if (other.type === "discount") {
+                                    friendAmount = -friendAmount;
+                                  }
+                                }
 
-                              return (
-                                <Text
-                                  key={other.id}
-                                  style={[
-                                    styles.friendItemDetail,
-                                    { color: colors.text },
-                                  ]}
-                                >
-                                  • {other.name} ({displayAmount}) -{" "}
-                                  {friendAmount >= 0 ? "+" : ""}
-                                  {DataService.formatCurrency(friendAmount)}
-                                </Text>
-                              );
-                            })}
-                          </>
-                        )}
+                                const displayAmount = other.usePercentage
+                                  ? `${other.amount}%`
+                                  : DataService.formatCurrency(amount);
 
-                      {/* Subtotal line if there are other payments */}
-                      {currentSplitData?.otherPayments &&
-                        currentSplitData.otherPayments.length > 0 && (
-                          <View
-                            style={[
-                              styles.friendSubtotalLine,
-                              { borderTopColor: colors.text + "20" },
-                            ]}
-                          >
-                            <Text
+                                return (
+                                  <Text
+                                    key={other.id}
+                                    style={[
+                                      styles.friendItemDetail,
+                                      { color: colors.text },
+                                    ]}
+                                  >
+                                    • {other.name} ({displayAmount}) -{" "}
+                                    {friendAmount >= 0 ? "+" : ""}
+                                    {DataService.formatCurrency(friendAmount)}
+                                  </Text>
+                                );
+                              })}
+                            </>
+                          )}
+
+                        {currentSplitData?.otherPayments &&
+                          currentSplitData.otherPayments.length > 0 && (
+                            <View
                               style={[
-                                styles.friendSubtotalText,
-                                { color: colors.text },
+                                styles.friendSubtotalLine,
+                                { borderTopColor: colors.text + "20" },
                               ]}
                             >
-                              Items Subtotal:{" "}
-                              {DataService.formatCurrency(itemsTotal)}
-                            </Text>
-                            <Text
-                              style={[
-                                styles.friendSubtotalText,
-                                { color: colors.tint, fontWeight: "600" },
-                              ]}
-                            >
-                              Final Total:{" "}
-                              {DataService.formatCurrency(
-                                totalWithOtherPayments
-                              )}
-                            </Text>
-                          </View>
-                        )}
+                              <Text
+                                style={[
+                                  styles.friendSubtotalText,
+                                  { color: colors.text },
+                                ]}
+                              >
+                                Items Subtotal:{" "}
+                                {DataService.formatCurrency(itemsTotal)}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.friendSubtotalText,
+                                  { color: colors.tint, fontWeight: "600" },
+                                ]}
+                              >
+                                Final Total:{" "}
+                                {DataService.formatCurrency(
+                                  totalWithOtherPayments
+                                )}
+                              </Text>
+                            </View>
+                          )}
+                      </View>
                     </View>
                   );
                 })}
@@ -1728,13 +1757,29 @@ export function UnifiedSplitScreen({
               styles.nextButton,
               {
                 backgroundColor: colors.tint,
+                opacity: currentStep === "share" && isRecognizing ? 0.6 : 1,
               },
             ]}
             onPress={handleNext}
+            disabled={currentStep === "share" && isRecognizing}
           >
-            <Text style={[styles.nextButtonText, { color: "#fff" }]}>
-              {currentStep === "share" ? "Share Split" : "Next"}
-            </Text>
+            {currentStep === "share" && isRecognizing ? (
+              <View style={styles.loadingButtonContent}>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text
+                  style={[
+                    styles.nextButtonText,
+                    { color: "#fff", marginLeft: 8 },
+                  ]}
+                >
+                  Sharing...
+                </Text>
+              </View>
+            ) : (
+              <Text style={[styles.nextButtonText, { color: "#fff" }]}>
+                {currentStep === "share" ? "Share Split" : "Next"}
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -3061,7 +3106,6 @@ const styles = StyleSheet.create({
   totalLabel: {
     fontSize: 16,
     fontWeight: "500",
-    marginBottom: 8,
   },
   totalAmount: {
     fontSize: 24,
@@ -3127,6 +3171,11 @@ const styles = StyleSheet.create({
   nextButtonText: {
     fontSize: 18,
     fontWeight: "bold",
+  },
+  loadingButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
   overlay: {
     position: "absolute",
@@ -3339,7 +3388,7 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   friendTotal: {
-    fontSize: 18,
+    fontSize: 12,
     fontWeight: "bold",
     marginTop: 4,
   },
@@ -3372,22 +3421,32 @@ const styles = StyleSheet.create({
   friendShareHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+  },
+  friendHeaderLeft: {
+    flexDirection: "row",
+    flex: 1,
   },
   friendShareInfo: {
     flex: 1,
-    marginLeft: 12,
+  },
+  friendSubtotal: {
+    fontSize: 12,
+    opacity: 0.7,
   },
   friendShareAmount: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
-    marginTop: 4,
+  },
+  breakdownSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.1)",
   },
   friendItemDetail: {
     fontSize: 14,
     opacity: 0.8,
     marginBottom: 4,
-    paddingLeft: 52,
   },
   bankInfoCard: {
     padding: 16,
@@ -3633,7 +3692,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 8,
     marginBottom: 4,
-    paddingLeft: 52,
   },
   friendSubtotalLine: {
     marginTop: 12,

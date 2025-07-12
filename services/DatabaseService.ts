@@ -5,6 +5,7 @@ export class DatabaseService {
   private static db: SQLite.SQLiteDatabase | null = null;
   private static isInitialized: boolean = false;
   private static initializationPromise: Promise<void> | null = null;
+  private static readonly DB_VERSION = 2; // Increment when schema changes
 
   // Initialize database
   static async initializeDatabase(): Promise<void> {
@@ -30,6 +31,7 @@ export class DatabaseService {
         this.db = await SQLite.openDatabaseAsync("splitbill.db");
       }
       await this.createTables();
+      await this.handleMigrations();
       await this.seedInitialData();
       this.isInitialized = true;
     } catch (error) {
@@ -112,6 +114,87 @@ export class DatabaseService {
         FOREIGN KEY (friendId) REFERENCES friends (id) ON DELETE CASCADE
       );
     `);
+
+    // Split bill items table
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS split_bill_items (
+        id TEXT PRIMARY KEY,
+        splitBillId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        price REAL NOT NULL,
+        qty INTEGER NOT NULL,
+        createdAt TEXT NOT NULL,
+        FOREIGN KEY (splitBillId) REFERENCES split_bills (id) ON DELETE CASCADE
+      );
+    `);
+
+    // Split bill item assignments (which friends got which items)
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS split_bill_item_assignments (
+        id TEXT PRIMARY KEY,
+        splitBillId TEXT NOT NULL,
+        itemId TEXT NOT NULL,
+        friendId TEXT NOT NULL,
+        qty INTEGER NOT NULL,
+        subTotal REAL NOT NULL,
+        FOREIGN KEY (splitBillId) REFERENCES split_bills (id) ON DELETE CASCADE,
+        FOREIGN KEY (itemId) REFERENCES split_bill_items (id) ON DELETE CASCADE,
+        FOREIGN KEY (friendId) REFERENCES friends (id) ON DELETE CASCADE
+      );
+    `);
+
+    // Split bill other payments (taxes, tips, etc.)
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS split_bill_other_payments (
+        id TEXT PRIMARY KEY,
+        splitBillId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        amount REAL NOT NULL,
+        usePercentage INTEGER NOT NULL DEFAULT 0,
+        createdAt TEXT NOT NULL,
+        FOREIGN KEY (splitBillId) REFERENCES split_bills (id) ON DELETE CASCADE
+      );
+    `);
+
+    // Split bill other payment assignments (how much each friend pays for other payments)
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS split_bill_other_assignments (
+        id TEXT PRIMARY KEY,
+        splitBillId TEXT NOT NULL,
+        otherPaymentId TEXT NOT NULL,
+        friendId TEXT NOT NULL,
+        amount REAL NOT NULL,
+        FOREIGN KEY (splitBillId) REFERENCES split_bills (id) ON DELETE CASCADE,
+        FOREIGN KEY (otherPaymentId) REFERENCES split_bill_other_payments (id) ON DELETE CASCADE,
+        FOREIGN KEY (friendId) REFERENCES friends (id) ON DELETE CASCADE
+      );
+    `);
+  }
+
+  // Handle database migrations
+  private static async handleMigrations(): Promise<void> {
+    if (!this.db) return;
+
+    // Check current database version
+    try {
+      const result = await this.db.getFirstAsync("PRAGMA user_version");
+      const currentVersion = (result as any)?.user_version || 0;
+
+      if (currentVersion < this.DB_VERSION) {
+        console.log(
+          `Migrating database from version ${currentVersion} to ${this.DB_VERSION}`
+        );
+
+        // For now, we'll just set the version
+        // In the future, add specific migration logic here
+        await this.db.execAsync(`PRAGMA user_version = ${this.DB_VERSION}`);
+
+        console.log("Database migration completed");
+      }
+    } catch (error) {
+      console.error("Error during database migration:", error);
+    }
   }
 
   // Seed initial data
@@ -269,22 +352,70 @@ export class DatabaseService {
         [(bill as any).id]
       );
 
+      // Load detailed items and other payments for each friend
+      const friendsWithDetails = await Promise.all(
+        friends.map(async (friend: any) => {
+          if (!this.db) throw new Error("Database not initialized");
+
+          // Load items for this friend
+          const items = await this.db.getAllAsync(
+            `
+            SELECT 
+              sbi.id, sbi.name, 
+              sbia.qty, sbi.price, sbia.subTotal
+            FROM split_bill_item_assignments sbia
+            JOIN split_bill_items sbi ON sbia.itemId = sbi.id
+            WHERE sbia.splitBillId = ? AND sbia.friendId = ?
+          `,
+            [(bill as any).id, friend.friendId]
+          );
+
+          // Load other payments for this friend
+          const others = await this.db.getAllAsync(
+            `
+            SELECT 
+              sbop.id, sbop.name, sbop.type, sbop.usePercentage,
+              sbop.amount as originalAmount, sboa.amount
+            FROM split_bill_other_assignments sboa
+            JOIN split_bill_other_payments sbop ON sboa.otherPaymentId = sbop.id
+            WHERE sboa.splitBillId = ? AND sboa.friendId = ?
+          `,
+            [(bill as any).id, friend.friendId]
+          );
+
+          return {
+            id: friend.id,
+            friendId: friend.friendId,
+            name: friend.name,
+            accentColor: friend.accentColor,
+            total: friend.total,
+            subTotal: friend.subTotal,
+            items: items.map((item: any) => ({
+              id: item.id,
+              name: item.name,
+              qty: item.qty,
+              price: item.price,
+              subTotal: item.subTotal,
+            })),
+            others: others.map((other: any) => ({
+              id: other.id,
+              name: other.name,
+              amount: other.amount,
+              price: other.originalAmount,
+              type: other.type,
+              usePercentage: other.usePercentage === 1,
+            })),
+            me: friend.me === 1,
+            createdAt: friend.createdAt,
+          };
+        })
+      );
+
       result.push({
         id: (bill as any).id,
         name: (bill as any).name,
         createdAt: new Date((bill as any).createdAt),
-        friends: friends.map((friend: any) => ({
-          id: friend.id,
-          friendId: friend.friendId,
-          name: friend.name,
-          accentColor: friend.accentColor,
-          total: friend.total,
-          subTotal: friend.subTotal,
-          items: [], // Empty for now
-          others: [], // Empty for now
-          me: friend.me === 1,
-          createdAt: friend.createdAt,
-        })),
+        friends: friendsWithDetails,
       });
     }
 
@@ -405,7 +536,89 @@ export class DatabaseService {
       [splitData.id, splitData.name, createdAtStr]
     );
 
-    // Calculate totals for each participant
+    // Save items
+    for (const item of splitData.items) {
+      await this.db.runAsync(
+        "INSERT OR REPLACE INTO split_bill_items (id, splitBillId, name, price, qty, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
+        [item.id, splitData.id, item.name, item.price, item.qty, createdAtStr]
+      );
+
+      // Save item assignments
+      for (const assignment of item.friends || []) {
+        const assignmentId = `${splitData.id}-${item.id}-${assignment.friendId}`;
+        await this.db.runAsync(
+          "INSERT OR REPLACE INTO split_bill_item_assignments (id, splitBillId, itemId, friendId, qty, subTotal) VALUES (?, ?, ?, ?, ?, ?)",
+          [
+            assignmentId,
+            splitData.id,
+            item.id,
+            assignment.friendId,
+            assignment.qty,
+            item.price * assignment.qty,
+          ]
+        );
+      }
+    }
+
+    // Save other payments
+    for (const other of splitData.otherPayments || []) {
+      await this.db.runAsync(
+        "INSERT OR REPLACE INTO split_bill_other_payments (id, splitBillId, name, type, amount, usePercentage, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+          other.id,
+          splitData.id,
+          other.name,
+          other.type,
+          other.amount,
+          other.usePercentage ? 1 : 0,
+          createdAtStr,
+        ]
+      );
+
+      // Calculate and save other payment assignments
+      const totalItemsValue = splitData.items.reduce(
+        (sum: number, item: any) => sum + item.price * item.qty,
+        0
+      );
+      const participantCount = participants.length;
+
+      for (const participant of participants) {
+        let participantSubTotal = 0;
+
+        // Calculate participant's items subtotal
+        splitData.items.forEach((item: any) => {
+          const assignment = item.friends?.find(
+            (f: any) => f.friendId === participant.id
+          );
+          if (assignment) {
+            participantSubTotal += item.price * assignment.qty;
+          }
+        });
+
+        let amount = other.amount;
+        if (other.usePercentage) {
+          amount = (totalItemsValue * other.amount) / 100;
+        }
+
+        let friendAmount = 0;
+        if (other.type === "tax") {
+          friendAmount = (participantSubTotal * amount) / totalItemsValue;
+        } else {
+          friendAmount = amount / participantCount;
+          if (other.type === "discount") {
+            friendAmount = -friendAmount;
+          }
+        }
+
+        const assignmentId = `${splitData.id}-${other.id}-${participant.id}`;
+        await this.db.runAsync(
+          "INSERT OR REPLACE INTO split_bill_other_assignments (id, splitBillId, otherPaymentId, friendId, amount) VALUES (?, ?, ?, ?, ?)",
+          [assignmentId, splitData.id, other.id, participant.id, friendAmount]
+        );
+      }
+    }
+
+    // Calculate totals for each participant and save to split_bill_friends
     for (const participant of participants) {
       let subTotal = 0;
       let total = 0;

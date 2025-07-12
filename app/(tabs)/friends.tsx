@@ -241,7 +241,7 @@ export default function FriendsScreen() {
           style={[
             styles.addButton,
             {
-              backgroundColor: colorScheme === "dark" ? "#3A3A3C" : colors.tint,
+              backgroundColor: colors.tint,
             },
           ]}
           onPress={openAddFriendModal}
