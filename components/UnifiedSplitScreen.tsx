@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../constants/Colors";
+import { useUserProfile } from "../contexts/UserProfileContext";
 import { useColorScheme } from "../hooks/useColorScheme";
 import {
   BagirataApiService,
@@ -82,6 +83,7 @@ export function UnifiedSplitScreen({
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const keyboardHeight = useKeyboardHeight();
+  const { userProfile } = useUserProfile();
 
   const [currentStep, setCurrentStep] = useState<FlowStep>("review");
   const [currentSplitData, setCurrentSplitData] = useState<SplitItem | null>(
@@ -114,6 +116,7 @@ export function UnifiedSplitScreen({
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
   const [showBankSheet, setShowBankSheet] = useState(false);
+  const [useProfileBankInfo, setUseProfileBankInfo] = useState(false);
 
   // Assignment states
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
@@ -174,11 +177,50 @@ export function UnifiedSplitScreen({
   };
 
   const openBankSheet = () => {
+    // Check if user has profile bank info and initialize toggle accordingly
+    const hasProfileBankInfo =
+      userProfile?.bankName &&
+      userProfile?.bankAccountName &&
+      userProfile?.bankAccountNumber;
+
+    if (hasProfileBankInfo) {
+      setUseProfileBankInfo(true);
+      setBankName(userProfile.bankName || "");
+      setAccountName(userProfile.bankAccountName || "");
+      setAccountNumber(userProfile.bankAccountNumber || "");
+    } else {
+      setUseProfileBankInfo(false);
+      setBankName("");
+      setAccountName("");
+      setAccountNumber("");
+    }
+
     setShowBankSheet(true);
   };
 
   const closeBankSheet = () => {
     setShowBankSheet(false);
+    // Reset form when closing
+    setBankName("");
+    setAccountName("");
+    setAccountNumber("");
+    setUseProfileBankInfo(false);
+  };
+
+  const handleToggleProfileBankInfo = (enabled: boolean) => {
+    setUseProfileBankInfo(enabled);
+
+    if (enabled && userProfile) {
+      // Copy profile bank info to form
+      setBankName(userProfile.bankName || "");
+      setAccountName(userProfile.bankAccountName || "");
+      setAccountNumber(userProfile.bankAccountNumber || "");
+    } else {
+      // Clear form
+      setBankName("");
+      setAccountName("");
+      setAccountNumber("");
+    }
   };
 
   const openAssignmentSheet = () => {
@@ -495,7 +537,7 @@ export function UnifiedSplitScreen({
         }
       }
     }
-    setShowParticipantSheet(false);
+    // Clear search query to allow easy addition of more participants
     setParticipantSearchQuery("");
   };
 
@@ -547,7 +589,7 @@ export function UnifiedSplitScreen({
         });
       }
 
-      setShowParticipantSheet(false);
+      // Clear search query to allow easy addition of more participants
       setParticipantSearchQuery("");
     } catch (error) {
       console.error("Error adding friend:", error);
@@ -1685,8 +1727,7 @@ export function UnifiedSplitScreen({
             style={[
               styles.nextButton,
               {
-                backgroundColor:
-                  colorScheme === "dark" ? "#3A3A3C" : colors.tint,
+                backgroundColor: colors.tint,
               },
             ]}
             onPress={handleNext}
@@ -1791,16 +1832,31 @@ export function UnifiedSplitScreen({
 
                 <View style={styles.modalButtons}>
                   <TouchableOpacity
-                    style={[styles.modalButton, styles.modalCancelButton]}
+                    style={[
+                      styles.modalButton,
+                      {
+                        backgroundColor:
+                          colorScheme === "dark" ? "#3A3A3C" : "#f0f0f0",
+                      },
+                    ]}
                     onPress={closeAddItemSheet}
                   >
-                    <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                    <Text
+                      style={[
+                        styles.modalCancelButtonText,
+                        { color: colorScheme === "dark" ? "#fff" : "#666" },
+                      ]}
+                    >
+                      Cancel
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[
                       styles.modalButton,
-                      { backgroundColor: colors.tint },
+                      {
+                        backgroundColor: colors.tint,
+                      },
                     ]}
                     onPress={addItem}
                   >
@@ -1891,7 +1947,9 @@ export function UnifiedSplitScreen({
                             otherType === type ? colors.tint : "transparent",
                           borderColor:
                             otherType === type
-                              ? colors.tint
+                              ? colorScheme === "dark"
+                                ? "#3A3A3C"
+                                : colors.tint
                               : colors.text + "30",
                         },
                       ]}
@@ -1968,7 +2026,9 @@ export function UnifiedSplitScreen({
                     <View
                       style={[
                         styles.compactToggleContainer,
-                        { borderColor: colors.tint },
+                        {
+                          borderColor: colors.tint,
+                        },
                       ]}
                     >
                       <TouchableOpacity
@@ -1979,7 +2039,8 @@ export function UnifiedSplitScreen({
                             backgroundColor: !otherUsePercentage
                               ? colors.tint
                               : "transparent",
-                            borderColor: colors.tint,
+                            borderColor:
+                              colorScheme === "dark" ? "#3A3A3C" : colors.tint,
                           },
                         ]}
                         onPress={() => setOtherUsePercentage(false)}
@@ -1988,7 +2049,11 @@ export function UnifiedSplitScreen({
                           style={[
                             styles.compactToggleText,
                             {
-                              color: !otherUsePercentage ? "#fff" : colors.tint,
+                              color: !otherUsePercentage
+                                ? "#fff"
+                                : colorScheme === "dark"
+                                ? "#3A3A3C"
+                                : colors.tint,
                             },
                           ]}
                         >
@@ -2012,7 +2077,11 @@ export function UnifiedSplitScreen({
                           style={[
                             styles.compactToggleText,
                             {
-                              color: otherUsePercentage ? "#fff" : colors.tint,
+                              color: otherUsePercentage
+                                ? "#fff"
+                                : colorScheme === "dark"
+                                ? "#3A3A3C"
+                                : colors.tint,
                             },
                           ]}
                         >
@@ -2036,16 +2105,31 @@ export function UnifiedSplitScreen({
 
                 <View style={[styles.modalButtons, { paddingBottom: 70 }]}>
                   <TouchableOpacity
-                    style={[styles.modalButton, styles.modalCancelButton]}
+                    style={[
+                      styles.modalButton,
+                      {
+                        backgroundColor:
+                          colorScheme === "dark" ? "#3A3A3C" : "#f0f0f0",
+                      },
+                    ]}
                     onPress={closeAddOtherSheet}
                   >
-                    <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                    <Text
+                      style={[
+                        styles.modalCancelButtonText,
+                        { color: colorScheme === "dark" ? "#fff" : "#666" },
+                      ]}
+                    >
+                      Cancel
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[
                       styles.modalButton,
-                      { backgroundColor: colors.tint },
+                      {
+                        backgroundColor: colors.tint,
+                      },
                     ]}
                     onPress={addOther}
                   >
@@ -2111,51 +2195,172 @@ export function UnifiedSplitScreen({
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >
+                {/* Use Profile Bank Info Toggle */}
+                {userProfile?.bankName &&
+                  userProfile?.bankAccountName &&
+                  userProfile?.bankAccountNumber && (
+                    <View
+                      style={[
+                        styles.toggleSection,
+                        {
+                          backgroundColor:
+                            colorScheme === "dark" ? "#2C2C2E" : "#f8f9fa",
+                        },
+                      ]}
+                    >
+                      <View style={styles.toggleHeader}>
+                        <Text
+                          style={[styles.toggleLabel, { color: colors.text }]}
+                        >
+                          Use Profile Bank Information
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.toggleSwitch,
+                            {
+                              backgroundColor: useProfileBankInfo
+                                ? colors.tint
+                                : colors.text + "20",
+                            },
+                          ]}
+                          onPress={() =>
+                            handleToggleProfileBankInfo(!useProfileBankInfo)
+                          }
+                        >
+                          <View
+                            style={[
+                              styles.toggleThumb,
+                              {
+                                backgroundColor: "#fff",
+                                transform: [
+                                  { translateX: useProfileBankInfo ? 22 : 2 },
+                                ],
+                              },
+                            ]}
+                          />
+                        </TouchableOpacity>
+                      </View>
+
+                      {useProfileBankInfo && (
+                        <View
+                          style={[
+                            styles.profileBankPreview,
+                            {
+                              borderColor: colors.text + "20",
+                              backgroundColor:
+                                colorScheme === "dark" ? "#1C1C1E" : "#f0f8ff",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.profileBankText,
+                              { color: colors.text },
+                            ]}
+                          >
+                            {userProfile.bankName} -{" "}
+                            {userProfile.bankAccountNumber}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.profileBankSubtext,
+                              { color: colors.text + "70" },
+                            ]}
+                          >
+                            {userProfile.bankAccountName}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
                 <TextInput
                   style={[
                     styles.textInput,
-                    { borderColor: colors.tint, color: colors.text },
+                    {
+                      borderColor: colors.tint,
+                      color: colors.text,
+                      opacity: useProfileBankInfo ? 0.5 : 1,
+                    },
                   ]}
                   value={bankName}
                   onChangeText={setBankName}
                   placeholder="Bank Name (e.g., BCA, Mandiri)"
                   placeholderTextColor={colors.text + "60"}
-                  autoFocus
+                  editable={!useProfileBankInfo}
+                  autoFocus={!useProfileBankInfo}
                 />
                 <TextInput
                   style={[
                     styles.textInput,
-                    { borderColor: colors.tint, color: colors.text },
+                    {
+                      borderColor: colors.tint,
+                      color: colors.text,
+                      opacity: useProfileBankInfo ? 0.5 : 1,
+                    },
                   ]}
                   value={accountNumber}
                   onChangeText={setAccountNumber}
                   placeholder="Account Number"
                   placeholderTextColor={colors.text + "60"}
                   keyboardType="numeric"
+                  editable={!useProfileBankInfo}
                 />
                 <TextInput
                   style={[
                     styles.textInput,
-                    { borderColor: colors.tint, color: colors.text },
+                    {
+                      borderColor: colors.tint,
+                      color: colors.text,
+                      opacity: useProfileBankInfo ? 0.5 : 1,
+                    },
                   ]}
                   value={accountName}
                   onChangeText={setAccountName}
                   placeholder="Account Name"
                   placeholderTextColor={colors.text + "60"}
+                  editable={!useProfileBankInfo}
                 />
+
+                {useProfileBankInfo && (
+                  <Text
+                    style={[
+                      styles.helpText,
+                      { color: colors.text + "70", marginTop: 12 },
+                    ]}
+                  >
+                    Using bank information from your profile. Toggle off to
+                    enter different details for this split.
+                  </Text>
+                )}
 
                 <View style={styles.modalButtons}>
                   <TouchableOpacity
-                    style={[styles.modalButton, styles.modalCancelButton]}
+                    style={[
+                      styles.modalButton,
+                      {
+                        backgroundColor:
+                          colorScheme === "dark" ? "#3A3A3C" : "#f0f0f0",
+                      },
+                    ]}
                     onPress={closeBankSheet}
                   >
-                    <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                    <Text
+                      style={[
+                        styles.modalCancelButtonText,
+                        { color: colorScheme === "dark" ? "#fff" : "#666" },
+                      ]}
+                    >
+                      Cancel
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[
                       styles.modalButton,
-                      { backgroundColor: colors.tint },
+                      {
+                        backgroundColor: colors.tint,
+                      },
                     ]}
                     onPress={addBankInfo}
                   >
@@ -2402,7 +2607,13 @@ export function UnifiedSplitScreen({
 
                     <View style={styles.modalButtons}>
                       <TouchableOpacity
-                        style={[styles.modalButton, styles.modalCancelButton]}
+                        style={[
+                          styles.modalButton,
+                          {
+                            backgroundColor:
+                              colorScheme === "dark" ? "#3A3A3C" : "#f0f0f0",
+                          },
+                        ]}
                         onPress={() => {
                           setShowAssignmentSheet(false);
                           setCurrentAssignmentItem(null);
@@ -2410,7 +2621,14 @@ export function UnifiedSplitScreen({
                           setFriendQuantities({});
                         }}
                       >
-                        <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                        <Text
+                          style={[
+                            styles.modalCancelButtonText,
+                            { color: colorScheme === "dark" ? "#fff" : "#666" },
+                          ]}
+                        >
+                          Cancel
+                        </Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -2483,9 +2701,13 @@ export function UnifiedSplitScreen({
                   <Ionicons name="close" size={24} color={colors.text} />
                 </TouchableOpacity>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>
-                  Add Participant
+                  Add Participants ({selectedParticipants.length})
                 </Text>
-                <View style={{ width: 24 }} />
+                <TouchableOpacity onPress={closeParticipantSheet}>
+                  <Text style={[styles.doneButtonText, { color: colors.tint }]}>
+                    Done
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               <ScrollView
@@ -2505,36 +2727,144 @@ export function UnifiedSplitScreen({
                   autoFocus
                 />
 
-                <View style={styles.friendsList}>
-                  {filteredFriends.map((friend) => (
-                    <TouchableOpacity
-                      key={friend.id}
+                {/* Selected Participants Section */}
+                {selectedParticipants.length > 0 && (
+                  <View style={styles.selectedParticipantsSection}>
+                    <Text
                       style={[
-                        styles.participantFriendItem,
-                        { borderColor: colors.text + "20" },
+                        styles.selectedParticipantsTitle,
+                        { color: colors.text },
                       ]}
-                      onPress={() => addParticipant(friend.id)}
                     >
-                      <View
+                      Selected ({selectedParticipants.length})
+                    </Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.selectedParticipantsScroll}
+                    >
+                      {selectedParticipants.map((participantId) => {
+                        const participant = friends.find(
+                          (f) => f.id === participantId
+                        );
+                        if (!participant) return null;
+                        return (
+                          <View
+                            key={participantId}
+                            style={[
+                              styles.selectedParticipantChip,
+                              {
+                                backgroundColor:
+                                  colorScheme === "dark"
+                                    ? "#3A3A3C"
+                                    : "#f0f0f0",
+                              },
+                            ]}
+                          >
+                            <View
+                              style={[
+                                styles.selectedParticipantAvatar,
+                                { backgroundColor: participant.accentColor },
+                              ]}
+                            >
+                              <Text style={styles.selectedParticipantInitial}>
+                                {participant.name.charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                            <Text
+                              style={[
+                                styles.selectedParticipantName,
+                                { color: colors.text },
+                              ]}
+                            >
+                              {participant.me ? "You" : participant.name}
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() => removeParticipant(participantId)}
+                              style={styles.removeParticipantButton}
+                            >
+                              <Ionicons
+                                name="close"
+                                size={14}
+                                color={colors.text + "60"}
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* Available Friends Section */}
+                <Text
+                  style={[
+                    styles.selectedParticipantsTitle,
+                    { color: colors.text, marginTop: 8 },
+                  ]}
+                >
+                  {participantSearchQuery.trim()
+                    ? "Search Results"
+                    : "Available Friends"}
+                </Text>
+
+                <View style={styles.friendsList}>
+                  {filteredFriends.map((friend) => {
+                    const isSelected = selectedParticipants.includes(friend.id);
+                    return (
+                      <TouchableOpacity
+                        key={friend.id}
                         style={[
-                          styles.participantFriendAvatar,
-                          { backgroundColor: friend.accentColor },
+                          styles.participantFriendItem,
+                          {
+                            borderColor: isSelected
+                              ? colors.tint
+                              : colors.text + "20",
+                            backgroundColor: isSelected
+                              ? colors.tint + "10"
+                              : "transparent",
+                          },
                         ]}
+                        onPress={() =>
+                          isSelected
+                            ? removeParticipant(friend.id)
+                            : addParticipant(friend.id)
+                        }
                       >
-                        <Text style={styles.participantFriendInitial}>
-                          {friend.name.charAt(0).toUpperCase()}
+                        <View
+                          style={[
+                            styles.participantFriendAvatar,
+                            { backgroundColor: friend.accentColor },
+                          ]}
+                        >
+                          <Text style={styles.participantFriendInitial}>
+                            {friend.name.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[
+                            styles.participantFriendName,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {friend.name}
                         </Text>
-                      </View>
-                      <Text
-                        style={[
-                          styles.participantFriendName,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {friend.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        {isSelected ? (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={20}
+                            color={colors.tint}
+                          />
+                        ) : (
+                          <Ionicons
+                            name="add-circle-outline"
+                            size={20}
+                            color={colors.text + "50"}
+                          />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
 
                   {filteredFriends.length === 0 &&
                     participantSearchQuery.trim() !== "" && (
@@ -3182,6 +3512,55 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontWeight: "500",
   },
+  // Selected participants styles
+  selectedParticipantsSection: {
+    marginTop: 16,
+    marginBottom: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  selectedParticipantsTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 8,
+    opacity: 0.8,
+  },
+  selectedParticipantsScroll: {
+    maxHeight: 60,
+  },
+  selectedParticipantChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginRight: 8,
+    maxWidth: 120,
+    // backgroundColor will be set dynamically
+  },
+  selectedParticipantAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  selectedParticipantInitial: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  selectedParticipantName: {
+    fontSize: 12,
+    marginLeft: 6,
+    marginRight: 4,
+    flex: 1,
+  },
+  removeParticipantButton: {
+    padding: 2,
+  },
   // Quantity assignment styles
   quantityInfo: {
     fontSize: 14,
@@ -3305,9 +3684,8 @@ const styles = StyleSheet.create({
   },
   helpText: {
     fontSize: 12,
-    lineHeight: 16,
-    marginTop: 12,
     fontStyle: "italic",
+    textAlign: "center",
   },
   toggleExplanation: {
     fontSize: 11,
@@ -3442,6 +3820,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
   },
+  doneButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
   modalContent: {
     padding: 24,
     flexShrink: 1, // Allow content to shrink if needed
@@ -3459,11 +3841,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
   },
-  modalCancelButton: {
-    backgroundColor: "#f0f0f0",
-  },
   modalCancelButtonText: {
-    color: "#666",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -3533,5 +3911,57 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     elevation: 5,
     maxHeight: "80%",
+  },
+  // Toggle styles for bank info modal
+  toggleSection: {
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    // backgroundColor will be set dynamically
+  },
+  toggleHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  toggleLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    flex: 1,
+  },
+  toggleSwitch: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    padding: 2,
+    justifyContent: "center",
+  },
+  toggleThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  profileBankPreview: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    // backgroundColor will be set dynamically
+  },
+  profileBankText: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  profileBankSubtext: {
+    fontSize: 12,
   },
 });

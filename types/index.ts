@@ -6,6 +6,9 @@ export interface Friend {
   me: boolean;
   accentColor: string;
   createdAt: Date;
+  bankName?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
 }
 
 export interface AssignedFriend {

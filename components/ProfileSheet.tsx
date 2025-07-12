@@ -29,16 +29,15 @@ export default function ProfileSheet({
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const [name, setName] = useState(profile?.name || "");
-  const [bankName, setBankName] = useState("");
-  const [bankAccountName, setBankAccountName] = useState("");
-  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankName, setBankName] = useState(profile?.bankName || "");
+  const [bankAccountName, setBankAccountName] = useState(
+    profile?.bankAccountName || ""
+  );
+  const [bankAccountNumber, setBankAccountNumber] = useState(
+    profile?.bankAccountNumber || ""
+  );
 
   const isNameValid = name.trim().length > 0;
-
-  const isBankInfoComplete =
-    bankName.trim().length > 0 &&
-    bankAccountName.trim().length > 0 &&
-    bankAccountNumber.trim().length > 0;
 
   const handleSave = () => {
     if (!isNameValid) {
@@ -52,17 +51,10 @@ export default function ProfileSheet({
       me: true,
       accentColor: profile?.accentColor || "#4A93CF",
       createdAt: profile?.createdAt || new Date(),
+      bankName: bankName.trim() || undefined,
+      bankAccountName: bankAccountName.trim() || undefined,
+      bankAccountNumber: bankAccountNumber.trim() || undefined,
     };
-
-    // TODO: Save bank info if provided
-    if (isBankInfoComplete) {
-      // Save bank information logic here
-      console.log("Bank info:", {
-        bankName,
-        accountName: bankAccountName,
-        accountNumber: bankAccountNumber,
-      });
-    }
 
     onSave(updatedProfile);
   };

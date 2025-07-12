@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Animated,
@@ -16,6 +16,27 @@ import { Colors } from "../../constants/Colors";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { ScannerService } from "../../services/ScannerService";
 
+const TIPS = [
+  {
+    icon: "sunny",
+    color: "#E67E22",
+    backgroundColor: "rgba(255, 193, 132, 0.12)",
+    text: "Ensure good lighting when taking the photo",
+  },
+  {
+    icon: "expand",
+    color: "#E74C3C",
+    backgroundColor: "rgba(255, 151, 151, 0.12)",
+    text: "Keep the receipt flat and fully visible",
+  },
+  {
+    icon: "eye",
+    color: "#27AE60",
+    backgroundColor: "rgba(174, 230, 174, 0.12)",
+    text: "Make sure text is clear and readable",
+  },
+];
+
 export default function ScanScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
@@ -27,6 +48,56 @@ export default function ScanScreen() {
     "main" | "split" | "manual"
   >("main");
   const [scannedText, setScannedText] = useState<string | null>(null);
+
+  // Tips slideshow state
+  const [currentTipIndex, setCurrentTipIndex] = useState(0);
+  const [fadeAnim] = useState(new Animated.Value(1));
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  const advanceTip = useCallback(() => {
+    if (isAnimating) return;
+
+    setIsAnimating(true);
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setCurrentTipIndex((prevIndex) => (prevIndex + 1) % TIPS.length);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        setIsAnimating(false);
+      });
+    });
+  }, [isAnimating, fadeAnim]);
+
+  // Auto-rotate tips every 3 seconds
+  useEffect(() => {
+    if (currentScreen !== "main") return; // Only run slideshow on main screen
+
+    const interval = setInterval(() => {
+      advanceTip();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [advanceTip, currentScreen]);
+
+  const handleTipPress = () => {
+    // Manually advance to next tip only if on main screen
+    if (currentScreen === "main") {
+      advanceTip();
+    }
+  };
+
+  // Cleanup animations when screen changes
+  useEffect(() => {
+    if (currentScreen !== "main") {
+      setIsAnimating(false);
+    }
+  }, [currentScreen]);
 
   const handleScanReceipt = async () => {
     setIsScanning(true);
@@ -142,6 +213,50 @@ export default function ScanScreen() {
           </Text>
         </View>
 
+        {/* Tips Slideshow */}
+        <View style={styles.tipsSection}>
+          <TouchableOpacity onPress={handleTipPress} activeOpacity={0.8}>
+            <Animated.View
+              style={[
+                styles.tipSlideshow,
+                {
+                  backgroundColor: TIPS[currentTipIndex].backgroundColor,
+                  borderLeftColor: TIPS[currentTipIndex].color,
+                  opacity: fadeAnim,
+                },
+              ]}
+            >
+              <Ionicons
+                name={TIPS[currentTipIndex].icon as any}
+                size={16}
+                color={TIPS[currentTipIndex].color}
+                style={styles.tipIcon}
+              />
+              <Text style={[styles.tipText, { color: colors.text }]}>
+                {TIPS[currentTipIndex].text}
+              </Text>
+            </Animated.View>
+          </TouchableOpacity>
+
+          {/* Tip indicators */}
+          <View style={styles.tipIndicators}>
+            {TIPS.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.tipIndicator,
+                  {
+                    backgroundColor:
+                      index === currentTipIndex
+                        ? TIPS[currentTipIndex].color
+                        : colors.text + "20",
+                  },
+                ]}
+              />
+            ))}
+          </View>
+        </View>
+
         {/* Action Buttons */}
         <View style={styles.section}>
           <View
@@ -163,8 +278,7 @@ export default function ScanScreen() {
               style={[
                 styles.scanButton,
                 {
-                  backgroundColor:
-                    colorScheme === "dark" ? "#3A3A3C" : colors.tint,
+                  backgroundColor: colors.tint,
                 },
                 isScanning && styles.scanButtonDisabled,
               ]}
@@ -219,10 +333,7 @@ export default function ScanScreen() {
                 styles.manualButton,
                 {
                   borderColor: colors.tint,
-                  backgroundColor:
-                    colorScheme === "dark"
-                      ? "rgba(74, 147, 207, 0.08)"
-                      : "#fff",
+                  backgroundColor: colors.background,
                 },
               ]}
               onPress={handleManualEntry}
@@ -234,48 +345,6 @@ export default function ScanScreen() {
                 </Text>
               </View>
             </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Tips */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Scanning Tips
-          </Text>
-          <View style={styles.tipsList}>
-            <View style={[styles.tipItem, styles.tipItemOrange]}>
-              <Ionicons
-                name="sunny"
-                size={16}
-                color="#E67E22"
-                style={styles.tipIcon}
-              />
-              <Text style={[styles.tipText, { color: colors.text }]}>
-                Ensure good lighting when taking the photo
-              </Text>
-            </View>
-            <View style={[styles.tipItem, styles.tipItemRed]}>
-              <Ionicons
-                name="expand"
-                size={16}
-                color="#E74C3C"
-                style={styles.tipIcon}
-              />
-              <Text style={[styles.tipText, { color: colors.text }]}>
-                Keep the receipt flat and fully visible
-              </Text>
-            </View>
-            <View style={[styles.tipItem, styles.tipItemGreen]}>
-              <Ionicons
-                name="eye"
-                size={16}
-                color="#27AE60"
-                style={styles.tipIcon}
-              />
-              <Text style={[styles.tipText, { color: colors.text }]}>
-                Make sure text is clear and readable
-              </Text>
-            </View>
           </View>
         </View>
       </ScrollView>
@@ -292,7 +361,7 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 20,
-    paddingBottom: 30,
+    paddingBottom: 20,
     alignItems: "center",
   },
   headerIcon: {
@@ -320,6 +389,34 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 30,
     paddingBottom: 60,
+  },
+  // Tips slideshow styles
+  tipsSection: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+  },
+  tipSlideshow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    padding: 16,
+    borderTopRightRadius: 6,
+    borderBottomRightRadius: 6,
+    borderTopLeftRadius: 6,
+    borderBottomLeftRadius: 6,
+    borderLeftWidth: 6,
+  },
+  tipIndicators: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+  },
+  tipIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   buttonsContainer: {
     borderRadius: 20,
@@ -471,60 +568,6 @@ const styles = StyleSheet.create({
     opacity: 0.5,
     textTransform: "uppercase",
     letterSpacing: 1.5,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 16,
-  },
-  featureGrid: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 20,
-  },
-  featureCard: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(0, 0, 0, 0.05)",
-  },
-  featureTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  featureDesc: {
-    fontSize: 12,
-    opacity: 0.7,
-    textAlign: "center",
-  },
-  tipsList: {
-    gap: 12,
-  },
-  tipItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    padding: 16,
-    borderTopRightRadius: 12,
-    borderBottomRightRadius: 12,
-    borderLeftWidth: 3,
-  },
-  tipItemOrange: {
-    backgroundColor: "rgba(255, 193, 132, 0.12)",
-    borderLeftColor: "#E67E22",
-  },
-  tipItemRed: {
-    backgroundColor: "rgba(255, 151, 151, 0.12)",
-    borderLeftColor: "#E74C3C",
-  },
-  tipItemGreen: {
-    backgroundColor: "rgba(174, 230, 174, 0.12)",
-    borderLeftColor: "#27AE60",
   },
   tipIcon: {
     marginTop: 2,

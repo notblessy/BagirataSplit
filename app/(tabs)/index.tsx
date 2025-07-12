@@ -224,7 +224,7 @@ export default function HistoryScreen() {
                     styles.splitCard,
                     {
                       backgroundColor:
-                        colorScheme === "dark" ? "#2c2c2e" : "#f8f9fa",
+                        colorScheme === "dark" ? "#262626" : "#f8f9fa",
                     },
                   ]}
                   onPress={() => handleSplitPress(split)}

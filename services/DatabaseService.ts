@@ -59,9 +59,33 @@ export class DatabaseService {
         name TEXT NOT NULL,
         me INTEGER NOT NULL DEFAULT 0,
         accentColor TEXT NOT NULL,
-        createdAt TEXT NOT NULL
+        createdAt TEXT NOT NULL,
+        bankName TEXT,
+        bankAccountName TEXT,
+        bankAccountNumber TEXT
       );
     `);
+
+    // Add bank columns to existing friends table if they don't exist
+    try {
+      await this.db.execAsync(`ALTER TABLE friends ADD COLUMN bankName TEXT;`);
+    } catch {
+      // Column already exists, ignore error
+    }
+    try {
+      await this.db.execAsync(
+        `ALTER TABLE friends ADD COLUMN bankAccountName TEXT;`
+      );
+    } catch {
+      // Column already exists, ignore error
+    }
+    try {
+      await this.db.execAsync(
+        `ALTER TABLE friends ADD COLUMN bankAccountNumber TEXT;`
+      );
+    } catch {
+      // Column already exists, ignore error
+    }
 
     // Split bills table
     await this.db.execAsync(`
@@ -117,6 +141,9 @@ export class DatabaseService {
       me: row.me === 1,
       accentColor: row.accentColor,
       createdAt: new Date(row.createdAt),
+      bankName: row.bankName || undefined,
+      bankAccountName: row.bankAccountName || undefined,
+      bankAccountNumber: row.bankAccountNumber || undefined,
     }));
   }
 
@@ -130,8 +157,17 @@ export class DatabaseService {
     const createdAt = new Date().toISOString();
 
     await this.db.runAsync(
-      "INSERT INTO friends (id, name, me, accentColor, createdAt) VALUES (?, ?, ?, ?, ?)",
-      [id, friend.name, friend.me ? 1 : 0, friend.accentColor, createdAt]
+      "INSERT INTO friends (id, name, me, accentColor, createdAt, bankName, bankAccountName, bankAccountNumber) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        id,
+        friend.name,
+        friend.me ? 1 : 0,
+        friend.accentColor,
+        createdAt,
+        friend.bankName || null,
+        friend.bankAccountName || null,
+        friend.bankAccountNumber || null,
+      ]
     );
 
     return {
@@ -140,6 +176,9 @@ export class DatabaseService {
       me: friend.me,
       accentColor: friend.accentColor,
       createdAt: new Date(createdAt),
+      bankName: friend.bankName,
+      bankAccountName: friend.bankAccountName,
+      bankAccountNumber: friend.bankAccountNumber,
     };
   }
 
@@ -165,6 +204,18 @@ export class DatabaseService {
       setParts.push("accentColor = ?");
       values.push(updates.accentColor);
     }
+    if (updates.bankName !== undefined) {
+      setParts.push("bankName = ?");
+      values.push(updates.bankName || null);
+    }
+    if (updates.bankAccountName !== undefined) {
+      setParts.push("bankAccountName = ?");
+      values.push(updates.bankAccountName || null);
+    }
+    if (updates.bankAccountNumber !== undefined) {
+      setParts.push("bankAccountNumber = ?");
+      values.push(updates.bankAccountNumber || null);
+    }
 
     if (setParts.length === 0) return undefined;
 
@@ -186,6 +237,9 @@ export class DatabaseService {
       me: (result as any).me === 1,
       accentColor: (result as any).accentColor,
       createdAt: new Date((result as any).createdAt),
+      bankName: (result as any).bankName || undefined,
+      bankAccountName: (result as any).bankAccountName || undefined,
+      bankAccountNumber: (result as any).bankAccountNumber || undefined,
     };
   }
 
@@ -319,6 +373,9 @@ export class DatabaseService {
       me: (result as any).me === 1,
       accentColor: (result as any).accentColor,
       createdAt: new Date((result as any).createdAt),
+      bankName: (result as any).bankName || undefined,
+      bankAccountName: (result as any).bankAccountName || undefined,
+      bankAccountNumber: (result as any).bankAccountNumber || undefined,
     };
   }
 
