@@ -1,14 +1,16 @@
 import React, { useState } from "react";
 import {
-  View,
-  Text,
+  Alert,
+  ScrollView,
   StyleSheet,
+  Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
-  Alert,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Colors } from "../constants/Colors";
+import { useColorScheme } from "../hooks/useColorScheme";
 import { Friend } from "../types";
 
 interface ProfileSheetProps {
@@ -24,6 +26,8 @@ export default function ProfileSheet({
   onSave,
   isFirstTime = false,
 }: ProfileSheetProps) {
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme ?? "light"];
   const [name, setName] = useState(profile?.name || "");
   const [bankName, setBankName] = useState("");
   const [bankAccountName, setBankAccountName] = useState("");
@@ -64,15 +68,27 @@ export default function ProfileSheet({
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: colorScheme === "dark" ? "#2c2c2e" : "#fff",
+            borderBottomColor: colorScheme === "dark" ? "#3c3c3e" : "#e1e5e9",
+          },
+        ]}
+      >
         {!isFirstTime && (
           <TouchableOpacity onPress={onClose} style={styles.cancelButton}>
-            <Text style={styles.cancelText}>Cancel</Text>
+            <Text style={[styles.cancelText, { color: colors.tint }]}>
+              Cancel
+            </Text>
           </TouchableOpacity>
         )}
         {isFirstTime && <View style={styles.cancelButton} />}
-        <Text style={styles.title}>
+        <Text style={[styles.title, { color: colors.text }]}>
           {isFirstTime
             ? "Welcome! Set up your profile"
             : "Profile & Bank Account"}
@@ -83,7 +99,10 @@ export default function ProfileSheet({
           disabled={!isNameValid}
         >
           <Text
-            style={[styles.saveText, !isNameValid && styles.saveTextDisabled]}
+            style={[
+              styles.saveText,
+              { color: isNameValid ? colors.tint : "#999" },
+            ]}
           >
             Save
           </Text>
@@ -93,17 +112,30 @@ export default function ProfileSheet({
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Profile Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Personal Information</Text>
-          <Text style={styles.fieldLabel}>Name *</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Personal Information
+          </Text>
+          <Text style={[styles.fieldLabel, { color: colors.text }]}>
+            Name *
+          </Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colorScheme === "dark" ? "#3A3A3C" : "#fff",
+                borderColor: colorScheme === "dark" ? "#5C5C5E" : "#e1e5e9",
+                color: colors.text,
+              },
+            ]}
             value={name}
             onChangeText={setName}
             placeholder="Enter your name"
-            placeholderTextColor="#999"
+            placeholderTextColor={colorScheme === "dark" ? "#8E8E93" : "#999"}
           />
           {(isFirstTime || !profile) && (
-            <Text style={styles.helpText}>
+            <Text
+              style={[styles.helpText, { color: colors.text, opacity: 0.7 }]}
+            >
               This will be used to identify you in split bills
             </Text>
           )}
@@ -111,36 +143,70 @@ export default function ProfileSheet({
 
         {/* Bank Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Bank Information (Optional)</Text>
-          <Text style={styles.sectionSubtitle}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Bank Information (Optional)
+          </Text>
+          <Text
+            style={[
+              styles.sectionSubtitle,
+              { color: colors.text, opacity: 0.7 },
+            ]}
+          >
             Add your bank details to make payments easier
           </Text>
 
-          <Text style={styles.fieldLabel}>Bank Name</Text>
+          <Text style={[styles.fieldLabel, { color: colors.text }]}>
+            Bank Name
+          </Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colorScheme === "dark" ? "#3A3A3C" : "#fff",
+                borderColor: colorScheme === "dark" ? "#5C5C5E" : "#e1e5e9",
+                color: colors.text,
+              },
+            ]}
             value={bankName}
             onChangeText={setBankName}
             placeholder="e.g., Bank Central Asia"
-            placeholderTextColor="#999"
+            placeholderTextColor={colorScheme === "dark" ? "#8E8E93" : "#999"}
           />
 
-          <Text style={styles.fieldLabel}>Account Holder Name</Text>
+          <Text style={[styles.fieldLabel, { color: colors.text }]}>
+            Account Holder Name
+          </Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colorScheme === "dark" ? "#3A3A3C" : "#fff",
+                borderColor: colorScheme === "dark" ? "#5C5C5E" : "#e1e5e9",
+                color: colors.text,
+              },
+            ]}
             value={bankAccountName}
             onChangeText={setBankAccountName}
             placeholder="Name as shown on bank account"
-            placeholderTextColor="#999"
+            placeholderTextColor={colorScheme === "dark" ? "#8E8E93" : "#999"}
           />
 
-          <Text style={styles.fieldLabel}>Account Number</Text>
+          <Text style={[styles.fieldLabel, { color: colors.text }]}>
+            Account Number
+          </Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colorScheme === "dark" ? "#3A3A3C" : "#fff",
+                borderColor: colorScheme === "dark" ? "#5C5C5E" : "#e1e5e9",
+                color: colors.text,
+              },
+            ]}
             value={bankAccountNumber}
             onChangeText={setBankAccountNumber}
             placeholder="Your bank account number"
-            placeholderTextColor="#999"
+            placeholderTextColor={colorScheme === "dark" ? "#8E8E93" : "#999"}
             keyboardType="numeric"
           />
         </View>
@@ -152,7 +218,6 @@ export default function ProfileSheet({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8f9fa",
   },
   header: {
     flexDirection: "row",
@@ -160,21 +225,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: "#e1e5e9",
   },
   cancelButton: {
     padding: 4,
   },
   cancelText: {
     fontSize: 16,
-    color: "#007AFF",
   },
   title: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#000",
   },
   saveButton: {
     padding: 4,
@@ -184,7 +245,6 @@ const styles = StyleSheet.create({
   },
   saveText: {
     fontSize: 16,
-    color: "#007AFF",
     fontWeight: "600",
   },
   saveTextDisabled: {
@@ -200,34 +260,27 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: "600",
-    color: "#000",
     marginBottom: 8,
   },
   sectionSubtitle: {
     fontSize: 14,
-    color: "#666",
     marginBottom: 20,
   },
   fieldLabel: {
     fontSize: 16,
     fontWeight: "500",
-    color: "#333",
     marginBottom: 8,
     marginTop: 16,
   },
   input: {
-    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#e1e5e9",
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    color: "#000",
   },
   helpText: {
     fontSize: 12,
-    color: "#666",
     marginTop: 4,
     fontStyle: "italic",
   },

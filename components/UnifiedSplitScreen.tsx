@@ -3,6 +3,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,13 +17,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
-import { DataService } from "../services/DataService";
-import { DatabaseService } from "../services/DatabaseService";
 import {
   BagirataApiService,
   convertRecognitionToAppFormat,
   convertToBackendFormat,
 } from "../services/BagirataApiService";
+import { DataService } from "../services/DataService";
+import { DatabaseService } from "../services/DatabaseService";
 import {
   AssignedFriend,
   AssignedItem,
@@ -27,6 +31,36 @@ import {
   OtherItem,
   SplitItem,
 } from "../types";
+
+import Modal from "react-native-modal";
+
+// Custom hook for tracking keyboard visibility
+const useKeyboardHeight = () => {
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      "keyboardDidShow",
+      (event) => {
+        setKeyboardHeight(event.endCoordinates.height);
+      }
+    );
+
+    const keyboardDidHideListener = Keyboard.addListener(
+      "keyboardDidHide",
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener?.remove();
+      keyboardDidHideListener?.remove();
+    };
+  }, []);
+
+  return keyboardHeight;
+};
 
 type FlowStep = "review" | "bank" | "assign" | "share";
 
@@ -47,6 +81,7 @@ export function UnifiedSplitScreen({
 }: UnifiedSplitScreenProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
+  const keyboardHeight = useKeyboardHeight();
 
   const [currentStep, setCurrentStep] = useState<FlowStep>("review");
   const [currentSplitData, setCurrentSplitData] = useState<SplitItem | null>(
@@ -99,6 +134,72 @@ export function UnifiedSplitScreen({
 
   // Recognition states
   const [isRecognizing, setIsRecognizing] = useState(false);
+
+  // Calculate modal height - limit to 30-40% when keyboard is visible
+  const getModalMaxHeight = useCallback((): number => {
+    const screenHeight = Dimensions.get("window").height;
+
+    if (keyboardHeight > 0) {
+      // When keyboard is visible, limit modal to 35% of screen height
+      return screenHeight * 0.5;
+    }
+
+    // When keyboard is hidden, use larger percentage
+    return screenHeight * 0.75;
+  }, [keyboardHeight]);
+
+  // Modal control functions
+  const openAddItemSheet = () => {
+    setShowAddItemSheet(true);
+  };
+
+  const closeAddItemSheet = () => {
+    setShowAddItemSheet(false);
+    setEditingItem(null);
+    setItemName("");
+    setItemPrice("");
+    setItemQty("1");
+  };
+
+  const openAddOtherSheet = () => {
+    setShowAddOtherSheet(true);
+  };
+
+  const closeAddOtherSheet = () => {
+    setShowAddOtherSheet(false);
+    setOtherName("");
+    setOtherAmount("");
+    setOtherType("tax");
+    setOtherUsePercentage(false);
+  };
+
+  const openBankSheet = () => {
+    setShowBankSheet(true);
+  };
+
+  const closeBankSheet = () => {
+    setShowBankSheet(false);
+  };
+
+  const openAssignmentSheet = () => {
+    setShowAssignmentSheet(true);
+  };
+
+  const closeAssignmentSheet = () => {
+    setShowAssignmentSheet(false);
+    setCurrentAssignmentItem(null);
+    setSelectedFriends([]);
+    setFriendQuantities({});
+  };
+
+  const openParticipantSheet = () => {
+    setShowParticipantSheet(true);
+  };
+
+  const closeParticipantSheet = () => {
+    setShowParticipantSheet(false);
+    setParticipantSearchQuery("");
+  };
 
   // Trigger recognition when scannedText is available
   const handleRecognition = useCallback(
@@ -525,7 +626,7 @@ export function UnifiedSplitScreen({
     setItemName(item.name);
     setItemPrice(item.price.toString());
     setItemQty(item.qty.toString());
-    setShowAddItemSheet(true);
+    openAddItemSheet();
   };
 
   const deleteItem = (itemId: string) => {
@@ -984,7 +1085,7 @@ export function UnifiedSplitScreen({
                       styles.addParticipantButton,
                       { borderColor: colors.tint, marginTop: 12 },
                     ]}
-                    onPress={() => setShowParticipantSheet(true)}
+                    onPress={() => openParticipantSheet()}
                   >
                     <Ionicons name="add" size={24} color={colors.tint} />
                   </TouchableOpacity>
@@ -1038,7 +1139,7 @@ export function UnifiedSplitScreen({
                         styles.addParticipantButton,
                         { borderColor: colors.tint },
                       ]}
-                      onPress={() => setShowParticipantSheet(true)}
+                      onPress={() => openParticipantSheet()}
                     >
                       <Ionicons name="add" size={24} color={colors.tint} />
                     </TouchableOpacity>
@@ -1095,7 +1196,7 @@ export function UnifiedSplitScreen({
 
               <TouchableOpacity
                 style={[styles.addButton, { borderColor: colors.tint }]}
-                onPress={() => setShowAddItemSheet(true)}
+                onPress={() => openAddItemSheet()}
               >
                 <Ionicons name="add" size={20} color={colors.tint} />
                 <Text style={[styles.addButtonText, { color: colors.tint }]}>
@@ -1144,7 +1245,7 @@ export function UnifiedSplitScreen({
 
               <TouchableOpacity
                 style={[styles.addButton, { borderColor: colors.tint }]}
-                onPress={() => setShowAddOtherSheet(true)}
+                onPress={() => openAddOtherSheet()}
               >
                 <Ionicons name="add" size={20} color={colors.tint} />
                 <Text style={[styles.addButtonText, { color: colors.tint }]}>
@@ -1220,7 +1321,7 @@ export function UnifiedSplitScreen({
               ) : (
                 <TouchableOpacity
                   style={[styles.addBankButton, { borderColor: colors.tint }]}
-                  onPress={() => setShowBankSheet(true)}
+                  onPress={() => openBankSheet()}
                 >
                   <Ionicons name="add" size={20} color={colors.tint} />
                   <Text
@@ -1257,16 +1358,21 @@ export function UnifiedSplitScreen({
                     <TouchableOpacity
                       style={[
                         styles.assignItemButton,
-                        { backgroundColor: colors.tint },
+                        {
+                          backgroundColor:
+                            colorScheme === "dark" ? "#3A3A3C" : colors.tint,
+                        },
                       ]}
                       onPress={() => {
                         setCurrentAssignmentItem(item);
                         setSelectedFriends([]);
                         setFriendQuantities({});
-                        setShowAssignmentSheet(true);
+                        openAssignmentSheet();
                       }}
                     >
-                      <Text style={styles.assignItemButtonText}>
+                      <Text
+                        style={[styles.assignItemButtonText, { color: "#fff" }]}
+                      >
                         {item.friends.length > 0 ? "Re-assign" : "Assign"}
                       </Text>
                     </TouchableOpacity>
@@ -1576,10 +1682,16 @@ export function UnifiedSplitScreen({
       <View style={styles.bottomActions}>
         <View style={styles.bottomSafeArea}>
           <TouchableOpacity
-            style={[styles.nextButton, { backgroundColor: colors.tint }]}
+            style={[
+              styles.nextButton,
+              {
+                backgroundColor:
+                  colorScheme === "dark" ? "#3A3A3C" : colors.tint,
+              },
+            ]}
             onPress={handleNext}
           >
-            <Text style={styles.nextButtonText}>
+            <Text style={[styles.nextButtonText, { color: "#fff" }]}>
               {currentStep === "share" ? "Share Split" : "Next"}
             </Text>
           </TouchableOpacity>
@@ -1587,619 +1699,873 @@ export function UnifiedSplitScreen({
       </View>
 
       {/* Add Item Sheet */}
-      {showAddItemSheet && (
-        <View style={styles.overlay}>
-          <View style={[styles.sheet, { backgroundColor: colors.background }]}>
-            <View style={styles.sheetHeader}>
-              <Text style={[styles.sheetTitle, { color: colors.text }]}>
-                {editingItem ? "Edit Item" : "Add Item"}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowAddItemSheet(false);
-                  setEditingItem(null);
-                  setItemName("");
-                  setItemPrice("");
-                  setItemQty("1");
-                }}
-              >
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.sheetContent}>
-              <TextInput
-                style={[
-                  styles.sheetInput,
-                  { borderColor: colors.text + "30", color: colors.text },
-                ]}
-                value={itemName}
-                onChangeText={setItemName}
-                placeholder="Item name"
-                placeholderTextColor={colors.text + "60"}
-              />
-              <View style={styles.sheetRow}>
-                <TextInput
-                  style={[
-                    styles.sheetInput,
-                    styles.priceInput,
-                    { borderColor: colors.text + "30", color: colors.text },
-                  ]}
-                  value={itemPrice}
-                  onChangeText={setItemPrice}
-                  placeholder="Price"
-                  placeholderTextColor={colors.text + "60"}
-                  keyboardType="numeric"
-                />
-                <TextInput
-                  style={[
-                    styles.sheetInput,
-                    styles.qtyInput,
-                    { borderColor: colors.text + "30", color: colors.text },
-                  ]}
-                  value={itemQty}
-                  onChangeText={setItemQty}
-                  placeholder="Qty"
-                  placeholderTextColor={colors.text + "60"}
-                  keyboardType="numeric"
-                />
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.sheetButton, { backgroundColor: colors.tint }]}
-              onPress={addItem}
+      <Modal
+        backdropColor="#222"
+        style={{ margin: 0, justifyContent: "flex-end" }}
+        onBackdropPress={closeAddItemSheet}
+        isVisible={showAddItemSheet}
+        avoidKeyboard={true}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1, justifyContent: "flex-end" }}
+        >
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor: colors.background,
+                maxHeight: getModalMaxHeight(),
+              },
+            ]}
+          >
+            <SafeAreaView
+              style={[
+                styles.modalContainer,
+                {
+                  backgroundColor: colors.background,
+                  maxHeight: getModalMaxHeight(),
+                },
+              ]}
             >
-              <Text style={styles.sheetButtonText}>
-                {editingItem ? "Update Item" : "Add Item"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* Add Other Sheet */}
-      {showAddOtherSheet && (
-        <View style={styles.overlay}>
-          <View style={[styles.sheet, { backgroundColor: colors.background }]}>
-            <View style={styles.sheetHeader}>
-              <Text style={[styles.sheetTitle, { color: colors.text }]}>
-                Add Other Payment
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowAddOtherSheet(false);
-                  setOtherName("");
-                  setOtherAmount("");
-                  setOtherType("tax");
-                  setOtherUsePercentage(false);
-                }}
-              >
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.sheetContent}>
-              <TextInput
+              <View
                 style={[
-                  styles.sheetInput,
-                  { borderColor: colors.text + "30", color: colors.text },
-                ]}
-                value={otherName}
-                onChangeText={setOtherName}
-                placeholder="Name (e.g., Tax, Service charge)"
-                placeholderTextColor={colors.text + "60"}
-              />
-
-              <View style={styles.typeSelector}>
-                {(["tax", "addition", "discount"] as const).map((type) => (
-                  <TouchableOpacity
-                    key={type}
-                    style={[
-                      styles.typeOption,
-                      {
-                        backgroundColor:
-                          otherType === type ? colors.tint : "transparent",
-                        borderColor:
-                          otherType === type ? colors.tint : colors.text + "30",
-                      },
-                    ]}
-                    onPress={() => setOtherType(type)}
-                  >
-                    <Text
-                      style={[
-                        styles.typeText,
-                        { color: otherType === type ? "#fff" : colors.text },
-                      ]}
-                    >
-                      {type.charAt(0).toUpperCase() + type.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Side-by-side amount input and toggle */}
-              <View style={styles.formSection}>
-                <Text style={[styles.amountLabel, { color: colors.text }]}>
-                  Amount
-                </Text>
-
-                <View style={styles.amountInputRow}>
-                  {/* Amount Input - Left Side */}
-                  <View style={styles.amountInputContainer}>
-                    <View style={styles.inputContainer}>
-                      {!otherUsePercentage && (
-                        <View style={styles.currencyPrefixContainer}>
-                          <Text
-                            style={[
-                              styles.currencyPrefix,
-                              { color: colors.text + "60" },
-                            ]}
-                          >
-                            Rp
-                          </Text>
-                        </View>
-                      )}
-                      <TextInput
-                        style={[
-                          styles.sheetInput,
-                          styles.amountInput,
-                          !otherUsePercentage
-                            ? styles.amountInputWithPrefix
-                            : styles.amountInputWithSuffix,
-                          {
-                            borderColor: colors.text + "30",
-                            color: colors.text,
-                          },
-                        ]}
-                        value={otherAmount}
-                        onChangeText={setOtherAmount}
-                        placeholder={otherUsePercentage ? "10" : "15000"}
-                        placeholderTextColor={colors.text + "60"}
-                        keyboardType="numeric"
-                      />
-                      {otherUsePercentage && (
-                        <View style={styles.percentageSuffixContainer}>
-                          <Text
-                            style={[
-                              styles.percentageSuffix,
-                              { color: colors.text + "60" },
-                            ]}
-                          >
-                            %
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-
-                  {/* Toggle Switch - Right Side */}
-                  <View
-                    style={[
-                      styles.compactToggleContainer,
-                      { borderColor: colors.tint },
-                    ]}
-                  >
-                    <TouchableOpacity
-                      style={[
-                        styles.compactToggleOption,
-                        styles.compactToggleLeft,
-                        {
-                          backgroundColor: !otherUsePercentage
-                            ? colors.tint
-                            : "transparent",
-                          borderColor: colors.tint,
-                        },
-                      ]}
-                      onPress={() => setOtherUsePercentage(false)}
-                    >
-                      <Text
-                        style={[
-                          styles.compactToggleText,
-                          { color: !otherUsePercentage ? "#fff" : colors.tint },
-                        ]}
-                      >
-                        Rp
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.compactToggleOption,
-                        styles.compactToggleRight,
-                        {
-                          backgroundColor: otherUsePercentage
-                            ? colors.tint
-                            : "transparent",
-                          borderColor: colors.tint,
-                        },
-                      ]}
-                      onPress={() => setOtherUsePercentage(true)}
-                    >
-                      <Text
-                        style={[
-                          styles.compactToggleText,
-                          { color: otherUsePercentage ? "#fff" : colors.tint },
-                        ]}
-                      >
-                        %
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-
-              {/* Help text explaining the calculation */}
-              <Text style={[styles.helpText, { color: colors.text + "70" }]}>
-                {otherType === "tax"
-                  ? otherUsePercentage
-                    ? "Tax will be calculated proportionally based on each person's share of items"
-                    : "Tax amount will be split proportionally based on each person's share of items"
-                  : otherUsePercentage
-                  ? "This amount will be calculated from total items value and split equally among all participants"
-                  : "This amount will be split equally among all participants"}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.sheetButton, { backgroundColor: colors.tint }]}
-              onPress={addOther}
-            >
-              <Text style={styles.sheetButtonText}>Add Payment</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* Bank Info Sheet */}
-      {showBankSheet && (
-        <View style={styles.overlay}>
-          <View style={[styles.sheet, { backgroundColor: colors.background }]}>
-            <View style={styles.sheetHeader}>
-              <Text style={[styles.sheetTitle, { color: colors.text }]}>
-                Add Bank Information
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowBankSheet(false);
-                }}
-              >
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.sheetContent}>
-              <TextInput
-                style={[
-                  styles.sheetInput,
-                  { borderColor: colors.text + "30", color: colors.text },
-                ]}
-                value={bankName}
-                onChangeText={setBankName}
-                placeholder="Bank Name (e.g., BCA, Mandiri)"
-                placeholderTextColor={colors.text + "60"}
-              />
-              <TextInput
-                style={[
-                  styles.sheetInput,
-                  { borderColor: colors.text + "30", color: colors.text },
-                ]}
-                value={accountNumber}
-                onChangeText={setAccountNumber}
-                placeholder="Account Number"
-                placeholderTextColor={colors.text + "60"}
-                keyboardType="numeric"
-              />
-              <TextInput
-                style={[
-                  styles.sheetInput,
-                  { borderColor: colors.text + "30", color: colors.text },
-                ]}
-                value={accountName}
-                onChangeText={setAccountName}
-                placeholder="Account Name"
-                placeholderTextColor={colors.text + "60"}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.sheetButton, { backgroundColor: colors.tint }]}
-              onPress={addBankInfo}
-            >
-              <Text style={styles.sheetButtonText}>Add Bank Info</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* Assignment Sheet */}
-      {showAssignmentSheet && currentAssignmentItem && (
-        <View style={styles.overlay}>
-          <View style={[styles.sheet, { backgroundColor: colors.background }]}>
-            <View style={styles.sheetHeader}>
-              <Text style={[styles.sheetTitle, { color: colors.text }]}>
-                Assign: {currentAssignmentItem.name}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowAssignmentSheet(false);
-                  setCurrentAssignmentItem(null);
-                  setSelectedFriends([]);
-                  setFriendQuantities({});
-                }}
-              >
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.sheetContent}>
-              <Text style={[styles.quantityInfo, { color: colors.text }]}>
-                Available: {currentAssignmentItem.qty} | Remaining:{" "}
-                {Math.round(getRemainingQuantity() * 100) / 100}
-              </Text>
-
-              {/* Assign Equally Button */}
-              <TouchableOpacity
-                style={[
-                  styles.equallyButton,
+                  styles.modalHeader,
                   {
-                    backgroundColor: colors.tint + "20",
-                    borderColor: colors.tint,
+                    borderBottomColor:
+                      colorScheme === "dark" ? "#3c3c3e" : "#e0e0e0",
                   },
                 ]}
-                onPress={assignEqually}
               >
-                <Ionicons name="pie-chart" size={20} color={colors.tint} />
-                <Text
-                  style={[styles.equallyButtonText, { color: colors.tint }]}
-                >
-                  Assign Equally to All Participants
+                <TouchableOpacity onPress={closeAddItemSheet}>
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  {editingItem ? "Edit Item" : "Add Item"}
                 </Text>
-              </TouchableOpacity>
+                <View style={{ width: 24 }} />
+              </View>
 
-              <Text
+              <ScrollView
+                style={styles.modalContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    { borderColor: colors.tint, color: colors.text },
+                  ]}
+                  value={itemName}
+                  onChangeText={setItemName}
+                  placeholder="Item name"
+                  placeholderTextColor={colors.text + "60"}
+                  autoFocus
+                />
+                <View style={styles.sheetRow}>
+                  <TextInput
+                    style={[
+                      styles.textInput,
+                      styles.priceInput,
+                      { borderColor: colors.tint, color: colors.text },
+                    ]}
+                    value={itemPrice}
+                    onChangeText={setItemPrice}
+                    placeholder="Price"
+                    placeholderTextColor={colors.text + "60"}
+                    keyboardType="numeric"
+                  />
+                  <TextInput
+                    style={[
+                      styles.textInput,
+                      styles.qtyInput,
+                      { borderColor: colors.tint, color: colors.text },
+                    ]}
+                    value={itemQty}
+                    onChangeText={setItemQty}
+                    placeholder="Qty"
+                    placeholderTextColor={colors.text + "60"}
+                    keyboardType="numeric"
+                  />
+                </View>
+
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalCancelButton]}
+                    onPress={closeAddItemSheet}
+                  >
+                    <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.modalButton,
+                      { backgroundColor: colors.tint },
+                    ]}
+                    onPress={addItem}
+                  >
+                    <Text style={styles.saveButtonText}>
+                      {editingItem ? "Update Item" : "Add Item"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </SafeAreaView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Add Other Payment Sheet */}
+      <Modal
+        backdropColor="#222"
+        style={{ margin: 0, justifyContent: "flex-end" }}
+        onBackdropPress={closeAddOtherSheet}
+        isVisible={showAddOtherSheet}
+        avoidKeyboard={true}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1, justifyContent: "flex-end" }}
+        >
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor: colors.background,
+                maxHeight: getModalMaxHeight(),
+              },
+            ]}
+          >
+            <SafeAreaView
+              style={[
+                styles.modalContainer,
+                {
+                  backgroundColor: colors.background,
+                  maxHeight: getModalMaxHeight(),
+                },
+              ]}
+            >
+              <View
                 style={[
-                  styles.participantsSectionTitle,
-                  { color: colors.text },
+                  styles.modalHeader,
+                  {
+                    borderBottomColor:
+                      colorScheme === "dark" ? "#3c3c3e" : "#e0e0e0",
+                  },
                 ]}
               >
-                Select Participants & Set Quantities:
-              </Text>
+                <TouchableOpacity onPress={closeAddOtherSheet}>
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  Add Other Payment
+                </Text>
+                <View style={{ width: 24 }} />
+              </View>
 
-              <ScrollView style={styles.assignmentParticipantsList}>
-                {friends
-                  .filter((friend) => selectedParticipants.includes(friend.id))
-                  .map((friend) => (
+              <ScrollView
+                style={styles.modalContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    { borderColor: colors.tint, color: colors.text },
+                  ]}
+                  value={otherName}
+                  onChangeText={setOtherName}
+                  placeholder="Name (e.g., Tax, Service charge)"
+                  placeholderTextColor={colors.text + "60"}
+                  autoFocus
+                />
+
+                <View style={styles.typeSelector}>
+                  {(["tax", "addition", "discount"] as const).map((type) => (
                     <TouchableOpacity
-                      key={friend.id}
+                      key={type}
                       style={[
-                        styles.assignmentParticipantItem,
+                        styles.typeOption,
                         {
-                          borderColor: selectedFriends.includes(friend.id)
-                            ? colors.tint
-                            : colors.text + "20",
-                          backgroundColor: selectedFriends.includes(friend.id)
-                            ? colors.tint + "10"
-                            : "transparent",
+                          backgroundColor:
+                            otherType === type ? colors.tint : "transparent",
+                          borderColor:
+                            otherType === type
+                              ? colors.tint
+                              : colors.text + "30",
                         },
                       ]}
-                      onPress={() => toggleFriendSelection(friend.id)}
+                      onPress={() => setOtherType(type)}
                     >
-                      <View
+                      <Text
                         style={[
-                          styles.friendAvatar,
-                          { backgroundColor: friend.accentColor },
+                          styles.typeText,
+                          { color: otherType === type ? "#fff" : colors.text },
                         ]}
                       >
-                        <Text style={styles.friendInitial}>
-                          {friend.name.charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                      <Text style={[styles.friendName, { color: colors.text }]}>
-                        {friend.name}
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
                       </Text>
-                      {selectedFriends.includes(friend.id) ? (
-                        <View style={styles.quantityControls}>
-                          <TouchableOpacity
-                            style={[
-                              styles.quantityButton,
-                              { borderColor: colors.tint },
-                            ]}
-                            onPress={() => {
-                              const increment =
-                                currentAssignmentItem.qty === 1 ? 0.1 : 1;
-                              updateFriendQuantity(
-                                friend.id,
-                                Math.max(
-                                  0,
-                                  (friendQuantities[friend.id] || 1) - increment
-                                )
-                              );
-                            }}
-                          >
-                            <Text
-                              style={[
-                                styles.quantityButtonText,
-                                { color: colors.tint },
-                              ]}
-                            >
-                              -
-                            </Text>
-                          </TouchableOpacity>
-                          <Text
-                            style={[
-                              styles.quantityText,
-                              { color: colors.text },
-                            ]}
-                          >
-                            {(friendQuantities[friend.id] || 0) % 1 === 0
-                              ? (friendQuantities[friend.id] || 0).toString()
-                              : (friendQuantities[friend.id] || 0).toFixed(2)}
-                          </Text>
-                          <TouchableOpacity
-                            style={[
-                              styles.quantityButton,
-                              {
-                                borderColor:
-                                  getRemainingQuantity() <= 0
-                                    ? colors.text + "30"
-                                    : colors.tint,
-                                opacity: getRemainingQuantity() <= 0 ? 0.5 : 1,
-                              },
-                            ]}
-                            onPress={() => {
-                              if (getRemainingQuantity() > 0) {
-                                const increment =
-                                  currentAssignmentItem.qty === 1 ? 0.1 : 1;
-                                updateFriendQuantity(
-                                  friend.id,
-                                  (friendQuantities[friend.id] || 0) + increment
-                                );
-                              }
-                            }}
-                            disabled={getRemainingQuantity() <= 0}
-                          >
-                            <Text
-                              style={[
-                                styles.quantityButtonText,
-                                {
-                                  color:
-                                    getRemainingQuantity() <= 0
-                                      ? colors.text + "30"
-                                      : colors.tint,
-                                },
-                              ]}
-                            >
-                              +
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <Ionicons
-                          name="add-circle-outline"
-                          size={20}
-                          color={colors.text + "50"}
-                        />
-                      )}
                     </TouchableOpacity>
                   ))}
-              </ScrollView>
-            </View>
+                </View>
 
-            <View style={styles.assignmentSheetActions}>
-              <TouchableOpacity
-                style={[
-                  styles.assignButton,
-                  {
-                    backgroundColor: canAssignItem()
-                      ? colors.tint
-                      : colors.text + "30",
-                    opacity: canAssignItem() ? 1 : 0.5,
-                  },
-                ]}
-                onPress={() => {
-                  assignItemToFriends(currentAssignmentItem);
-                  setShowAssignmentSheet(false);
-                }}
-                disabled={!canAssignItem()}
-              >
-                <Text style={styles.assignButtonText}>Assign Item</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
+                {/* Side-by-side amount input and toggle */}
+                <View style={styles.formSection}>
+                  <Text style={[styles.amountLabel, { color: colors.text }]}>
+                    Amount
+                  </Text>
 
-      {/* Participant Management Sheet */}
-      {showParticipantSheet && (
-        <View style={styles.overlay}>
-          <View style={[styles.sheet, { backgroundColor: colors.background }]}>
-            <View style={styles.sheetHeader}>
-              <Text style={[styles.sheetTitle, { color: colors.text }]}>
-                Add Participant
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowParticipantSheet(false);
-                  setParticipantSearchQuery("");
-                }}
-              >
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
+                  <View style={styles.amountInputRow}>
+                    {/* Amount Input - Left Side */}
+                    <View style={styles.amountInputContainer}>
+                      <View style={styles.inputContainer}>
+                        {!otherUsePercentage && (
+                          <View style={styles.currencyPrefixContainer}>
+                            <Text
+                              style={[
+                                styles.currencyPrefix,
+                                { color: colors.text + "60" },
+                              ]}
+                            >
+                              Rp
+                            </Text>
+                          </View>
+                        )}
+                        <TextInput
+                          style={[
+                            styles.textInput,
+                            styles.amountInput,
+                            !otherUsePercentage
+                              ? styles.amountInputWithPrefix
+                              : styles.amountInputWithSuffix,
+                            {
+                              borderColor: colors.tint,
+                              color: colors.text,
+                            },
+                          ]}
+                          value={otherAmount}
+                          onChangeText={setOtherAmount}
+                          placeholder={otherUsePercentage ? "10" : "15000"}
+                          placeholderTextColor={colors.text + "60"}
+                          keyboardType="numeric"
+                        />
+                        {otherUsePercentage && (
+                          <View style={styles.percentageSuffixContainer}>
+                            <Text
+                              style={[
+                                styles.percentageSuffix,
+                                { color: colors.text + "60" },
+                              ]}
+                            >
+                              %
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
 
-            <View style={styles.sheetContent}>
-              <TextInput
-                style={[
-                  styles.sheetInput,
-                  { borderColor: colors.text + "30", color: colors.text },
-                ]}
-                value={participantSearchQuery}
-                onChangeText={setParticipantSearchQuery}
-                placeholder="Search friends or enter name..."
-                placeholderTextColor={colors.text + "60"}
-                autoFocus
-              />
-
-              <ScrollView style={styles.friendsList}>
-                {filteredFriends.map((friend) => (
-                  <TouchableOpacity
-                    key={friend.id}
-                    style={[
-                      styles.participantFriendItem,
-                      { borderColor: colors.text + "20" },
-                    ]}
-                    onPress={() => addParticipant(friend.id)}
-                  >
+                    {/* Toggle Switch - Right Side */}
                     <View
                       style={[
-                        styles.participantFriendAvatar,
-                        { backgroundColor: friend.accentColor },
-                      ]}
-                    >
-                      <Text style={styles.participantFriendInitial}>
-                        {friend.name.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.participantFriendName,
-                        { color: colors.text },
-                      ]}
-                    >
-                      {friend.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-
-                {filteredFriends.length === 0 &&
-                  participantSearchQuery.trim() !== "" && (
-                    <TouchableOpacity
-                      style={[
-                        styles.addNewFriendButton,
+                        styles.compactToggleContainer,
                         { borderColor: colors.tint },
                       ]}
-                      onPress={() => addNewFriend(participantSearchQuery)}
+                    >
+                      <TouchableOpacity
+                        style={[
+                          styles.compactToggleOption,
+                          styles.compactToggleLeft,
+                          {
+                            backgroundColor: !otherUsePercentage
+                              ? colors.tint
+                              : "transparent",
+                            borderColor: colors.tint,
+                          },
+                        ]}
+                        onPress={() => setOtherUsePercentage(false)}
+                      >
+                        <Text
+                          style={[
+                            styles.compactToggleText,
+                            {
+                              color: !otherUsePercentage ? "#fff" : colors.tint,
+                            },
+                          ]}
+                        >
+                          Rp
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.compactToggleOption,
+                          styles.compactToggleRight,
+                          {
+                            backgroundColor: otherUsePercentage
+                              ? colors.tint
+                              : "transparent",
+                            borderColor: colors.tint,
+                          },
+                        ]}
+                        onPress={() => setOtherUsePercentage(true)}
+                      >
+                        <Text
+                          style={[
+                            styles.compactToggleText,
+                            {
+                              color: otherUsePercentage ? "#fff" : colors.tint,
+                            },
+                          ]}
+                        >
+                          %
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Help text explaining the calculation */}
+                <Text style={[styles.helpText, { color: colors.text + "70" }]}>
+                  {otherType === "tax"
+                    ? otherUsePercentage
+                      ? "Tax will be calculated proportionally based on each person's share of items"
+                      : "Tax amount will be split proportionally based on each person's share of items"
+                    : otherUsePercentage
+                    ? "This amount will be calculated from total items value and split equally among all participants"
+                    : "This amount will be split equally among all participants"}
+                </Text>
+
+                <View style={[styles.modalButtons, { paddingBottom: 70 }]}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalCancelButton]}
+                    onPress={closeAddOtherSheet}
+                  >
+                    <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.modalButton,
+                      { backgroundColor: colors.tint },
+                    ]}
+                    onPress={addOther}
+                  >
+                    <Text style={styles.saveButtonText}>Add Payment</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </SafeAreaView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Bank Info Sheet */}
+      <Modal
+        backdropColor="#222"
+        style={{ margin: 0, justifyContent: "flex-end" }}
+        onBackdropPress={closeBankSheet}
+        isVisible={showBankSheet}
+        avoidKeyboard={true}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1, justifyContent: "flex-end" }}
+        >
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor: colors.background,
+                maxHeight: getModalMaxHeight(),
+              },
+            ]}
+          >
+            <SafeAreaView
+              style={[
+                styles.modalContainer,
+                {
+                  backgroundColor: colors.background,
+                  maxHeight: getModalMaxHeight(),
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.modalHeader,
+                  {
+                    borderBottomColor:
+                      colorScheme === "dark" ? "#3c3c3e" : "#e0e0e0",
+                  },
+                ]}
+              >
+                <TouchableOpacity onPress={closeBankSheet}>
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  Add Bank Information
+                </Text>
+                <View style={{ width: 24 }} />
+              </View>
+
+              <ScrollView
+                style={styles.modalContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    { borderColor: colors.tint, color: colors.text },
+                  ]}
+                  value={bankName}
+                  onChangeText={setBankName}
+                  placeholder="Bank Name (e.g., BCA, Mandiri)"
+                  placeholderTextColor={colors.text + "60"}
+                  autoFocus
+                />
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    { borderColor: colors.tint, color: colors.text },
+                  ]}
+                  value={accountNumber}
+                  onChangeText={setAccountNumber}
+                  placeholder="Account Number"
+                  placeholderTextColor={colors.text + "60"}
+                  keyboardType="numeric"
+                />
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    { borderColor: colors.tint, color: colors.text },
+                  ]}
+                  value={accountName}
+                  onChangeText={setAccountName}
+                  placeholder="Account Name"
+                  placeholderTextColor={colors.text + "60"}
+                />
+
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalCancelButton]}
+                    onPress={closeBankSheet}
+                  >
+                    <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.modalButton,
+                      { backgroundColor: colors.tint },
+                    ]}
+                    onPress={addBankInfo}
+                  >
+                    <Text style={styles.saveButtonText}>Add Bank Info</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </SafeAreaView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Assignment Sheet */}
+      <Modal
+        backdropColor="#222"
+        style={{ margin: 0, justifyContent: "flex-end" }}
+        onBackdropPress={closeAssignmentSheet}
+        isVisible={showAssignmentSheet && currentAssignmentItem !== null}
+        avoidKeyboard={true}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1, justifyContent: "flex-end" }}
+        >
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor: colors.background,
+                maxHeight: getModalMaxHeight(),
+              },
+            ]}
+          >
+            <SafeAreaView
+              style={[
+                styles.modalContainer,
+                {
+                  backgroundColor: colors.background,
+                  maxHeight: getModalMaxHeight(),
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.modalHeader,
+                  {
+                    borderBottomColor:
+                      colorScheme === "dark" ? "#3c3c3e" : "#e0e0e0",
+                  },
+                ]}
+              >
+                <TouchableOpacity onPress={closeAssignmentSheet}>
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  Assign: {currentAssignmentItem?.name}
+                </Text>
+                <View style={{ width: 24 }} />
+              </View>
+
+              <ScrollView
+                style={styles.modalContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {currentAssignmentItem && (
+                  <>
+                    <Text style={[styles.quantityInfo, { color: colors.text }]}>
+                      Available: {currentAssignmentItem.qty} | Remaining:{" "}
+                      {Math.round(getRemainingQuantity() * 100) / 100}
+                    </Text>
+
+                    {/* Assign Equally Button */}
+                    <TouchableOpacity
+                      style={[
+                        styles.equallyButton,
+                        {
+                          backgroundColor: colors.tint + "20",
+                          borderColor: colors.tint,
+                        },
+                      ]}
+                      onPress={assignEqually}
                     >
                       <Ionicons
-                        name="person-add"
+                        name="pie-chart"
                         size={20}
                         color={colors.tint}
                       />
                       <Text
                         style={[
-                          styles.addNewFriendText,
+                          styles.equallyButtonText,
                           { color: colors.tint },
                         ]}
                       >
-                        Add &quot;{participantSearchQuery}&quot; as new friend
+                        Assign Equally to All Participants
                       </Text>
                     </TouchableOpacity>
-                  )}
+
+                    <Text
+                      style={[
+                        styles.participantsSectionTitle,
+                        { color: colors.text },
+                      ]}
+                    >
+                      Select Participants & Set Quantities:
+                    </Text>
+
+                    <View style={styles.assignmentParticipantsList}>
+                      {friends
+                        .filter((friend) =>
+                          selectedParticipants.includes(friend.id)
+                        )
+                        .map((friend) => (
+                          <TouchableOpacity
+                            key={friend.id}
+                            style={[
+                              styles.assignmentParticipantItem,
+                              {
+                                borderColor: selectedFriends.includes(friend.id)
+                                  ? colors.tint
+                                  : colors.text + "20",
+                                backgroundColor: selectedFriends.includes(
+                                  friend.id
+                                )
+                                  ? colors.tint + "10"
+                                  : "transparent",
+                              },
+                            ]}
+                            onPress={() => toggleFriendSelection(friend.id)}
+                          >
+                            <View
+                              style={[
+                                styles.friendAvatar,
+                                { backgroundColor: friend.accentColor },
+                              ]}
+                            >
+                              <Text style={styles.friendInitial}>
+                                {friend.name.charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                            <Text
+                              style={[
+                                styles.friendName,
+                                { color: colors.text },
+                              ]}
+                            >
+                              {friend.name}
+                            </Text>
+                            {selectedFriends.includes(friend.id) ? (
+                              <View style={styles.quantityControls}>
+                                <TouchableOpacity
+                                  style={[
+                                    styles.quantityButton,
+                                    { borderColor: colors.tint },
+                                  ]}
+                                  onPress={() => {
+                                    const increment =
+                                      currentAssignmentItem.qty === 1 ? 0.1 : 1;
+                                    updateFriendQuantity(
+                                      friend.id,
+                                      Math.max(
+                                        0,
+                                        (friendQuantities[friend.id] || 1) -
+                                          increment
+                                      )
+                                    );
+                                  }}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.quantityButtonText,
+                                      { color: colors.tint },
+                                    ]}
+                                  >
+                                    -
+                                  </Text>
+                                </TouchableOpacity>
+                                <Text
+                                  style={[
+                                    styles.quantityText,
+                                    { color: colors.text },
+                                  ]}
+                                >
+                                  {(friendQuantities[friend.id] || 0) % 1 === 0
+                                    ? (
+                                        friendQuantities[friend.id] || 0
+                                      ).toString()
+                                    : (
+                                        friendQuantities[friend.id] || 0
+                                      ).toFixed(2)}
+                                </Text>
+                                <TouchableOpacity
+                                  style={[
+                                    styles.quantityButton,
+                                    {
+                                      borderColor:
+                                        getRemainingQuantity() <= 0
+                                          ? colors.text + "30"
+                                          : colors.tint,
+                                      opacity:
+                                        getRemainingQuantity() <= 0 ? 0.5 : 1,
+                                    },
+                                  ]}
+                                  onPress={() => {
+                                    if (getRemainingQuantity() > 0) {
+                                      const increment =
+                                        currentAssignmentItem.qty === 1
+                                          ? 0.1
+                                          : 1;
+                                      updateFriendQuantity(
+                                        friend.id,
+                                        (friendQuantities[friend.id] || 0) +
+                                          increment
+                                      );
+                                    }
+                                  }}
+                                  disabled={getRemainingQuantity() <= 0}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.quantityButtonText,
+                                      {
+                                        color:
+                                          getRemainingQuantity() <= 0
+                                            ? colors.text + "30"
+                                            : colors.tint,
+                                      },
+                                    ]}
+                                  >
+                                    +
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            ) : (
+                              <Ionicons
+                                name="add-circle-outline"
+                                size={20}
+                                color={colors.text + "50"}
+                              />
+                            )}
+                          </TouchableOpacity>
+                        ))}
+                    </View>
+
+                    <View style={styles.modalButtons}>
+                      <TouchableOpacity
+                        style={[styles.modalButton, styles.modalCancelButton]}
+                        onPress={() => {
+                          setShowAssignmentSheet(false);
+                          setCurrentAssignmentItem(null);
+                          setSelectedFriends([]);
+                          setFriendQuantities({});
+                        }}
+                      >
+                        <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.modalButton,
+                          {
+                            backgroundColor: canAssignItem()
+                              ? colors.tint
+                              : colors.text + "30",
+                            opacity: canAssignItem() ? 1 : 0.5,
+                          },
+                        ]}
+                        onPress={() => {
+                          assignItemToFriends(currentAssignmentItem);
+                          setShowAssignmentSheet(false);
+                        }}
+                        disabled={!canAssignItem()}
+                      >
+                        <Text style={styles.saveButtonText}>Assign Item</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
               </ScrollView>
-            </View>
+            </SafeAreaView>
           </View>
-        </View>
-      )}
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Participant Management Sheet */}
+      <Modal
+        backdropColor="#222"
+        style={{ margin: 0, justifyContent: "flex-end" }}
+        onBackdropPress={closeParticipantSheet}
+        isVisible={showParticipantSheet}
+        avoidKeyboard={true}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1, justifyContent: "flex-end" }}
+        >
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor: colors.background,
+                maxHeight: getModalMaxHeight(),
+              },
+            ]}
+          >
+            <SafeAreaView
+              style={[
+                styles.modalContainer,
+                {
+                  backgroundColor: colors.background,
+                  maxHeight: getModalMaxHeight(),
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.modalHeader,
+                  {
+                    borderBottomColor:
+                      colorScheme === "dark" ? "#3c3c3e" : "#e0e0e0",
+                  },
+                ]}
+              >
+                <TouchableOpacity onPress={closeParticipantSheet}>
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  Add Participant
+                </Text>
+                <View style={{ width: 24 }} />
+              </View>
+
+              <ScrollView
+                style={styles.modalContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    { borderColor: colors.tint, color: colors.text },
+                  ]}
+                  value={participantSearchQuery}
+                  onChangeText={setParticipantSearchQuery}
+                  placeholder="Search friends or enter name..."
+                  placeholderTextColor={colors.text + "60"}
+                  autoFocus
+                />
+
+                <View style={styles.friendsList}>
+                  {filteredFriends.map((friend) => (
+                    <TouchableOpacity
+                      key={friend.id}
+                      style={[
+                        styles.participantFriendItem,
+                        { borderColor: colors.text + "20" },
+                      ]}
+                      onPress={() => addParticipant(friend.id)}
+                    >
+                      <View
+                        style={[
+                          styles.participantFriendAvatar,
+                          { backgroundColor: friend.accentColor },
+                        ]}
+                      >
+                        <Text style={styles.participantFriendInitial}>
+                          {friend.name.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text
+                        style={[
+                          styles.participantFriendName,
+                          { color: colors.text },
+                        ]}
+                      >
+                        {friend.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+
+                  {filteredFriends.length === 0 &&
+                    participantSearchQuery.trim() !== "" && (
+                      <TouchableOpacity
+                        style={[
+                          styles.addNewFriendButton,
+                          { borderColor: colors.tint },
+                        ]}
+                        onPress={() => addNewFriend(participantSearchQuery)}
+                      >
+                        <Ionicons
+                          name="person-add"
+                          size={20}
+                          color={colors.tint}
+                        />
+                        <Text
+                          style={[
+                            styles.addNewFriendText,
+                            { color: colors.tint },
+                          ]}
+                        >
+                          Add &quot;{participantSearchQuery}&quot; as new friend
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                </View>
+              </ScrollView>
+            </SafeAreaView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2431,7 +2797,6 @@ const styles = StyleSheet.create({
   nextButtonText: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#fff",
   },
   overlay: {
     position: "absolute",
@@ -2440,20 +2805,35 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
+    justifyContent: "flex-end",
     alignItems: "center",
   },
   sheet: {
-    width: "90%",
-    maxWidth: 400,
-    borderRadius: 16,
+    width: "100%",
+    maxHeight: "80%",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     padding: 24,
+    paddingBottom: 40,
     elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
   },
   sheetHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#00000020",
+    borderRadius: 2,
+    alignSelf: "center",
     marginBottom: 16,
   },
   sheetTitle: {
@@ -2461,7 +2841,8 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   sheetContent: {
-    marginBottom: 24,
+    flex: 1,
+    maxHeight: 400,
   },
   sheetInput: {
     height: 48,
@@ -2493,7 +2874,6 @@ const styles = StyleSheet.create({
   sheetButtonText: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#fff",
   },
   typeSelector: {
     flexDirection: "row",
@@ -2568,7 +2948,6 @@ const styles = StyleSheet.create({
   assignButtonText: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#fff",
   },
   cancelButton: {
     height: 48,
@@ -2601,7 +2980,6 @@ const styles = StyleSheet.create({
   assignItemButtonText: {
     fontSize: 14,
     fontWeight: "bold",
-    color: "#fff",
   },
   assignedFriends: {
     marginTop: 8,
@@ -2762,7 +3140,7 @@ const styles = StyleSheet.create({
   },
   // Friend list styles (using different names to avoid duplicates)
   friendsList: {
-    maxHeight: 300,
+    marginTop: 12,
   },
   participantFriendItem: {
     flexDirection: "row",
@@ -2855,7 +3233,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   assignmentParticipantsList: {
-    maxHeight: 300,
     marginBottom: 16,
   },
   assignmentParticipantItem: {
@@ -2907,6 +3284,7 @@ const styles = StyleSheet.create({
     position: "relative",
     flexDirection: "row",
     alignItems: "center",
+    width: "100%",
   },
   amountInputContainer: {
     flex: 1,
@@ -3044,5 +3422,116 @@ const styles = StyleSheet.create({
     alignItems: "center",
     zIndex: 1,
     backgroundColor: "transparent",
+  },
+  // Modal styles (matching friends.tsx)
+  modalContainer: {
+    flex: 1,
+    justifyContent: "flex-end",
+    minHeight: "40%",
+    maxHeight: "90%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  modalContent: {
+    padding: 24,
+    flexShrink: 1, // Allow content to shrink if needed
+    paddingBottom: 100,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 6,
+    marginTop: 20,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  modalCancelButton: {
+    backgroundColor: "#f0f0f0",
+  },
+  modalCancelButtonText: {
+    color: "#666",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  saveButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  textInput: {
+    height: 48,
+    borderWidth: 2,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    marginBottom: 16,
+    width: "100%",
+  },
+  centeredView: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalView: {
+    margin: 20,
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 35,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  button: {
+    borderRadius: 20,
+    padding: 10,
+    elevation: 2,
+  },
+  buttonOpen: {
+    backgroundColor: "#F194FF",
+  },
+  buttonClose: {
+    backgroundColor: "#2196F3",
+  },
+  textStyle: {
+    color: "white",
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  modalText: {
+    marginBottom: 15,
+    textAlign: "center",
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  bottomSheetContainer: {
+    position: "absolute",
+    bottom: 0,
+    width: "100%",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    elevation: 5,
+    maxHeight: "80%",
   },
 });

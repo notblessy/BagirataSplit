@@ -4,11 +4,11 @@ import {
   Alert,
   Animated,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Share,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { UnifiedSplitScreen } from "../../components/UnifiedSplitScreen";
@@ -162,7 +162,10 @@ export default function ScanScreen() {
             <TouchableOpacity
               style={[
                 styles.scanButton,
-                { backgroundColor: colors.tint },
+                {
+                  backgroundColor:
+                    colorScheme === "dark" ? "#3A3A3C" : colors.tint,
+                },
                 isScanning && styles.scanButtonDisabled,
               ]}
               onPress={handleScanReceipt}
@@ -185,12 +188,16 @@ export default function ScanScreen() {
                       },
                     ]}
                   />
-                  <Text style={styles.buttonText}>Scanning...</Text>
+                  <Text style={[styles.buttonText, { color: "#fff" }]}>
+                    Scanning...
+                  </Text>
                 </View>
               ) : (
                 <View style={styles.buttonContent}>
                   <Ionicons name="camera" size={20} color="#fff" />
-                  <Text style={styles.buttonText}>Scan Receipt</Text>
+                  <Text style={[styles.buttonText, { color: "#fff" }]}>
+                    Scan Receipt
+                  </Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -426,7 +433,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     marginLeft: 10,
-    color: "#fff",
     letterSpacing: 0.5,
   },
   loadingDot: {

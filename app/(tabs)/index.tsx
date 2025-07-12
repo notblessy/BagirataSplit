@@ -100,17 +100,39 @@ export default function HistoryScreen() {
                 backgroundColor: friend.accentColor,
                 marginLeft: index > 0 ? -8 : 0,
                 zIndex: maxShow - index,
+                borderColor: colorScheme === "dark" ? "#2c2c2e" : "#fff",
               },
             ]}
           >
-            <Text style={styles.avatarText}>
+            <Text
+              style={[
+                styles.avatarText,
+                { color: colorScheme === "dark" ? "#fff" : "#fff" },
+              ]}
+            >
               {friend.name.charAt(0).toUpperCase()}
             </Text>
           </View>
         ))}
         {remainingCount > 0 && (
-          <View style={[styles.avatar, styles.remainingAvatar]}>
-            <Text style={styles.remainingText}>+{remainingCount}</Text>
+          <View
+            style={[
+              styles.avatar,
+              styles.remainingAvatar,
+              {
+                borderColor: colorScheme === "dark" ? "#2c2c2e" : "#fff",
+                backgroundColor: colorScheme === "dark" ? "#3A3A3C" : "#ccc",
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.remainingText,
+                { color: colorScheme === "dark" ? "#fff" : "#666" },
+              ]}
+            >
+              +{remainingCount}
+            </Text>
           </View>
         )}
       </View>
@@ -136,15 +158,30 @@ export default function HistoryScreen() {
               </ThemedText>
             </View>
             <TouchableOpacity
-              style={[styles.profileButton, { backgroundColor: colors.tint }]}
+              style={[
+                styles.profileButton,
+                {
+                  backgroundColor:
+                    colorScheme === "dark" ? "#3A3A3C" : colors.tint,
+                },
+              ]}
               onPress={() => setShowProfileSheet(true)}
             >
               {userProfile?.name ? (
-                <Text style={styles.profileButtonText}>
+                <Text
+                  style={[
+                    styles.profileButtonText,
+                    { color: colorScheme === "dark" ? "#fff" : "#fff" },
+                  ]}
+                >
                   {userProfile.name.charAt(0).toUpperCase()}
                 </Text>
               ) : (
-                <Ionicons name="person-outline" size={20} color="#fff" />
+                <Ionicons
+                  name="person-outline"
+                  size={20}
+                  color={colorScheme === "dark" ? "#fff" : "#fff"}
+                />
               )}
             </TouchableOpacity>
           </View>
@@ -195,7 +232,15 @@ export default function HistoryScreen() {
                   {/* Card Header */}
                   <View style={styles.splitHeader}>
                     <View style={styles.splitHeaderLeft}>
-                      <View style={styles.splitIcon}>
+                      <View
+                        style={[
+                          styles.splitIcon,
+                          {
+                            backgroundColor:
+                              colorScheme === "dark" ? "#3A3A3C" : "#f0f0f0",
+                          },
+                        ]}
+                      >
                         <Ionicons
                           name="receipt-outline"
                           size={24}
@@ -236,10 +281,23 @@ export default function HistoryScreen() {
               {/* Load More Button */}
               {hasMoreBills && (
                 <TouchableOpacity
-                  style={styles.loadMoreButton}
+                  style={[
+                    styles.loadMoreButton,
+                    {
+                      backgroundColor:
+                        colorScheme === "dark" ? "#3A3A3C" : "#E5E5E5",
+                    },
+                  ]}
                   onPress={loadMoreBills}
                 >
-                  <ThemedText style={styles.loadMoreText}>Load More</ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.loadMoreText,
+                      { color: colorScheme === "dark" ? "#fff" : "#333" },
+                    ]}
+                  >
+                    Load More
+                  </ThemedText>
                 </TouchableOpacity>
               )}
             </>
@@ -360,7 +418,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#f0f0f0",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -415,19 +472,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
-    borderColor: "#fff",
   },
   avatarText: {
-    color: "#fff",
     fontSize: 12,
     fontWeight: "bold",
   },
   remainingAvatar: {
-    backgroundColor: "#ccc",
     marginLeft: -8,
   },
   remainingText: {
-    color: "#666",
     fontSize: 10,
     fontWeight: "bold",
   },
@@ -467,7 +520,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   profileButtonText: {
-    color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
   },
@@ -479,13 +531,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 16,
     gap: 8,
-    backgroundColor: "#E5E5E5",
     alignSelf: "center",
     paddingHorizontal: 24,
     marginBottom: 60,
   },
   loadMoreText: {
-    color: "#333",
     fontSize: 16,
     fontWeight: "600",
   },

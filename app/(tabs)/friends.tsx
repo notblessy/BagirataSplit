@@ -238,7 +238,12 @@ export default function FriendsScreen() {
 
         {/* Add Friend Button */}
         <TouchableOpacity
-          style={[styles.addButton, { backgroundColor: colors.tint }]}
+          style={[
+            styles.addButton,
+            {
+              backgroundColor: colorScheme === "dark" ? "#3A3A3C" : colors.tint,
+            },
+          ]}
           onPress={openAddFriendModal}
         >
           <Ionicons
@@ -247,7 +252,9 @@ export default function FriendsScreen() {
             color="#fff"
             style={styles.addButtonIcon}
           />
-          <Text style={styles.addButtonText}>Add New Friend</Text>
+          <Text style={[styles.addButtonText, { color: "#fff" }]}>
+            Add New Friend
+          </Text>
         </TouchableOpacity>
 
         {/* Friends List */}
@@ -428,7 +435,6 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   addButtonText: {
-    color: "#fff",
     fontSize: 16,
     fontWeight: "600",
   },
