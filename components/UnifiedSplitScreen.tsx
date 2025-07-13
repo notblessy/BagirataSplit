@@ -144,28 +144,33 @@ export function UnifiedSplitScreen({
       userProfile?.bankAccountName &&
       userProfile?.bankAccountNumber;
 
-    if (hasProfileBankInfo) {
+    // Only auto-fill with profile info if there's no existing bank info
+    const hasExistingBankInfo = bankName || accountNumber || accountName;
+
+    if (hasProfileBankInfo && !hasExistingBankInfo) {
       setUseProfileBankInfo(true);
       setBankName(userProfile.bankName || "");
       setAccountName(userProfile.bankAccountName || "");
       setAccountNumber(userProfile.bankAccountNumber || "");
-    } else {
+    } else if (!hasProfileBankInfo && !hasExistingBankInfo) {
       setUseProfileBankInfo(false);
-      setBankName("");
-      setAccountName("");
-      setAccountNumber("");
     }
+    // If there's existing bank info, don't change anything
 
     bankSheetRef.current?.show();
   };
 
   const closeBankSheet = () => {
     bankSheetRef.current?.hide();
-    // Reset form when closing
+  };
+
+  const cancelBankSheet = () => {
+    // Reset form when canceling
     setBankName("");
     setAccountName("");
     setAccountNumber("");
     setUseProfileBankInfo(false);
+    closeBankSheet();
   };
 
   const handleToggleProfileBankInfo = (enabled: boolean) => {
@@ -312,54 +317,57 @@ export function UnifiedSplitScreen({
     }
   }, [isManualEntry, currentSplitData]);
 
-  // Create split data from manual entry
-  const createSplitFromManualEntry = () => {
-    if (!splitName.trim()) {
-      Alert.alert("Error", "Please enter a split name");
-      return;
-    }
-
-    if (items.length === 0) {
-      Alert.alert("Error", "Please add at least one item");
-      return;
-    }
-
-    if (selectedParticipants.length === 0) {
-      Alert.alert("Error", "Please add at least one participant");
-      return;
-    }
-
-    const newSplitData: SplitItem = {
-      id: Date.now().toString(),
-      name: splitName.trim(),
-      status: "draft",
-      friends: friends
-        .filter((friend) => selectedParticipants.includes(friend.id))
-        .map((friend) => ({
-          id: friend.id,
-          friendId: friend.id,
-          name: friend.name,
-          me: friend.me,
-          accentColor: friend.accentColor,
-          qty: 0,
-          subTotal: 0,
-          createdAt: friend.createdAt,
-        })),
-      items: items,
-      otherPayments: currentSplitData?.otherPayments || [],
-      createdAt: new Date(),
-    };
-
-    setCurrentSplitData(newSplitData);
-  };
-
   // Navigation functions
   const handleNext = () => {
     if (currentStep === "review") {
+      // If manual entry and no current split data, create it first
       if (isManualEntry && !currentSplitData) {
-        createSplitFromManualEntry();
+        // Validate before creating
+        if (!splitName.trim()) {
+          Alert.alert("Error", "Please enter a split name");
+          return;
+        }
+        if (items.length === 0) {
+          Alert.alert("Error", "Please add at least one item");
+          return;
+        }
+        if (selectedParticipants.length === 0) {
+          Alert.alert("Error", "Please add at least one participant");
+          return;
+        }
+        if (splitName.trim().length > 25) {
+          Alert.alert("Error", "Split name cannot exceed 25 characters");
+          return;
+        }
+
+        // Create split data
+        const newSplitData: SplitItem = {
+          id: Date.now().toString(),
+          name: splitName.trim(),
+          status: "draft",
+          friends: friends
+            .filter((friend) => selectedParticipants.includes(friend.id))
+            .map((friend) => ({
+              id: friend.id,
+              friendId: friend.id,
+              name: friend.name,
+              me: friend.me,
+              accentColor: friend.accentColor,
+              qty: 0,
+              subTotal: 0,
+              createdAt: friend.createdAt,
+            })),
+          items: items,
+          otherPayments: [],
+          createdAt: new Date(),
+        };
+
+        setCurrentSplitData(newSplitData);
+        // Continue to next step immediately
+        setCurrentStep("assign");
         return;
       }
+
       if (!currentSplitData) {
         Alert.alert("Error", "No split data available");
         return;
@@ -682,7 +690,18 @@ export function UnifiedSplitScreen({
         id: Date.now().toString(),
         name: splitName || "New Split",
         status: "draft",
-        friends: [],
+        friends: friends
+          .filter((friend) => selectedParticipants.includes(friend.id))
+          .map((friend) => ({
+            id: friend.id,
+            friendId: friend.id,
+            name: friend.name,
+            me: friend.me,
+            accentColor: friend.accentColor,
+            qty: 0,
+            subTotal: 0,
+            createdAt: friend.createdAt,
+          })),
         items: items,
         otherPayments: [newOther],
         createdAt: new Date(),
@@ -752,7 +771,7 @@ export function UnifiedSplitScreen({
   const updateFriendQuantity = (friendId: string, quantity: number) => {
     setFriendQuantities((prev) => ({
       ...prev,
-      [friendId]: Math.max(0, quantity),
+      [friendId]: Math.max(0, roundToTwoDecimals(quantity)),
     }));
   };
 
@@ -762,7 +781,7 @@ export function UnifiedSplitScreen({
 
   const getRemainingQuantity = () => {
     if (!currentAssignmentItem) return 0;
-    return currentAssignmentItem.qty - getTotalAssignedQuantity();
+    return roundToTwoDecimals(currentAssignmentItem.qty - getTotalAssignedQuantity());
   };
 
   const canAssignItem = () => {
@@ -773,6 +792,11 @@ export function UnifiedSplitScreen({
     );
   };
 
+  // Utility function for rounding to 2 decimal places
+  const roundToTwoDecimals = (num: number) => {
+    return Math.round(num * 100) / 100;
+  };
+
   const assignEqually = () => {
     if (!currentAssignmentItem || selectedParticipants.length === 0) return;
 
@@ -781,7 +805,7 @@ export function UnifiedSplitScreen({
     const equalShare = currentAssignmentItem.qty / selectedParticipants.length;
 
     selectedParticipants.forEach((participantId) => {
-      newQuantities[participantId] = equalShare;
+      newQuantities[participantId] = roundToTwoDecimals(equalShare);
     });
 
     setSelectedFriends(selectedParticipants);
@@ -825,7 +849,7 @@ export function UnifiedSplitScreen({
                 me: friend?.me || false,
                 accentColor: friend?.accentColor || "#007AFF",
                 qty: assignedQty,
-                subTotal: assignedQty * item.price,
+                subTotal: roundToTwoDecimals(assignedQty * item.price),
                 createdAt: friend?.createdAt || new Date(),
               };
             })
@@ -844,13 +868,15 @@ export function UnifiedSplitScreen({
   const calculateFriendTotal = (friendId: string) => {
     if (!currentSplitData) return 0;
 
-    return currentSplitData.items.reduce((total, item) => {
+    const total = currentSplitData.items.reduce((total, item) => {
       const friendAssignment = item.friends.find((f) => f.id === friendId);
       if (friendAssignment) {
         return total + item.price * friendAssignment.qty;
       }
       return total;
     }, 0);
+
+    return roundToTwoDecimals(total);
   };
 
   const calculateTotal = () => {
@@ -876,10 +902,10 @@ export function UnifiedSplitScreen({
         },
         0
       );
-      return itemsTotal + othersTotal;
+      return roundToTwoDecimals(itemsTotal + othersTotal);
     }
 
-    return itemsTotal;
+    return roundToTwoDecimals(itemsTotal);
   };
 
   const calculateFriendTotalWithOtherPayments = (friendId: string) => {
@@ -903,7 +929,7 @@ export function UnifiedSplitScreen({
     // Calculate participant count for equal splitting
     const participantCount = selectedParticipants.length;
 
-    if (participantCount === 0) return itemsTotal;
+    if (participantCount === 0) return roundToTwoDecimals(itemsTotal);
 
     // Apply other payments
     const otherPaymentsTotal = currentSplitData.otherPayments.reduce(
@@ -930,7 +956,7 @@ export function UnifiedSplitScreen({
       0
     );
 
-    return itemsTotal + otherPaymentsTotal;
+    return roundToTwoDecimals(itemsTotal + otherPaymentsTotal);
   };
 
   // Bank info functions
@@ -941,7 +967,6 @@ export function UnifiedSplitScreen({
     }
 
     closeBankSheet();
-    Alert.alert("Success", "Bank information added successfully");
   };
 
   const clearBankInfo = () => {
@@ -2178,7 +2203,7 @@ export function UnifiedSplitScreen({
                 },
               ]}
             >
-              <TouchableOpacity onPress={closeBankSheet}>
+              <TouchableOpacity onPress={cancelBankSheet}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
               <Text style={[styles.modalTitle, { color: colors.text }]}>
@@ -2337,7 +2362,7 @@ export function UnifiedSplitScreen({
                         colorScheme === "dark" ? "#3A3A3C" : "#f0f0f0",
                     },
                   ]}
-                  onPress={closeBankSheet}
+                  onPress={cancelBankSheet}
                 >
                   <Text
                     style={[
@@ -2422,7 +2447,7 @@ export function UnifiedSplitScreen({
                 <>
                   <Text style={[styles.quantityInfo, { color: colors.text }]}>
                     Available: {currentAssignmentItem.qty} | Remaining:{" "}
-                    {Math.round(getRemainingQuantity() * 100) / 100}
+                    {getRemainingQuantity()}
                   </Text>
 
                   {/* Assign Equally Button */}
