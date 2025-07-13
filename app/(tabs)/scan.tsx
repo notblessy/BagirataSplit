@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Animated,
+  Platform,
   ScrollView,
   Share,
   StyleSheet,
@@ -110,8 +111,23 @@ export default function ScanScreen() {
     }).start();
 
     try {
+      console.log("Starting scan process...");
+
+      // Check if scanner is available before proceeding
+      const isAvailable = await ScannerService.isAvailable();
+      if (!isAvailable) {
+        Alert.alert(
+          "Scanner Unavailable",
+          "Document scanner is not available on this device.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
       // Use actual document scanner
       const scanResult = await ScannerService.scanDocumentWithOCR();
+
+      console.log("Scan result:", scanResult);
 
       if (scanResult.success && scanResult.text) {
         // Store the extracted text for recognition processing
@@ -126,6 +142,31 @@ export default function ScanScreen() {
       }
     } catch (error: any) {
       console.error("Scan error:", error);
+
+      // Handle specific iOS camera errors
+      if (Platform.OS === "ios") {
+        if (
+          error.message?.includes("camera") ||
+          error.message?.includes("Camera")
+        ) {
+          Alert.alert(
+            "Camera Permission Required",
+            "Please enable camera access for Bagirata in Settings > Privacy & Security > Camera",
+            [
+              { text: "Cancel" },
+              {
+                text: "Open Settings",
+                onPress: () => {
+                  // You can use Linking to open settings
+                  // Linking.openSettings();
+                },
+              },
+            ]
+          );
+          return;
+        }
+      }
+
       Alert.alert(
         "Scan Error",
         "An error occurred while scanning. Please try again.",

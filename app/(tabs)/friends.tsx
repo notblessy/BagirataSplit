@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Modal,
@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import ActionSheet, { ActionSheetRef } from "react-native-actions-sheet";
 import { SafeAreaView } from "react-native-safe-area-context";
 import ProfileSheet from "../../components/ProfileSheet";
 import { ThemedText } from "../../components/ThemedText";
@@ -36,8 +37,11 @@ export default function FriendsScreen() {
   >({});
   const [newFriendName, setNewFriendName] = useState("");
   const [editingFriend, setEditingFriend] = useState<Friend | null>(null);
-  const [isModalVisible, setIsModalVisible] = useState(false);
+  // const [isModalVisible, setIsModalVisible] = useState(false);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
+
+  // ActionSheet ref
+  const addFriendSheetRef = useRef<ActionSheetRef>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -81,7 +85,7 @@ export default function FriendsScreen() {
       if (newFriend) {
         loadData(); // Reload data to get fresh state
         setNewFriendName("");
-        setIsModalVisible(false);
+        addFriendSheetRef.current?.hide();
       }
     }
   };
@@ -89,7 +93,7 @@ export default function FriendsScreen() {
   const handleEditFriend = (friend: Friend) => {
     setEditingFriend(friend);
     setNewFriendName(friend.name);
-    setIsModalVisible(true);
+    addFriendSheetRef.current?.show();
   };
 
   const handleUpdateFriend = async () => {
@@ -104,7 +108,7 @@ export default function FriendsScreen() {
         loadData();
         setNewFriendName("");
         setEditingFriend(null);
-        setIsModalVisible(false);
+        addFriendSheetRef.current?.hide();
       }
     }
   };
@@ -134,13 +138,13 @@ export default function FriendsScreen() {
   const openAddFriendModal = () => {
     setEditingFriend(null);
     setNewFriendName("");
-    setIsModalVisible(true);
+    addFriendSheetRef.current?.show();
   };
 
   const closeModal = () => {
     setEditingFriend(null);
     setNewFriendName("");
-    setIsModalVisible(false);
+    addFriendSheetRef.current?.hide();
   };
 
   const renderFriendCard = (friend: Friend) => (
@@ -282,12 +286,16 @@ export default function FriendsScreen() {
         </ThemedView>
       </ScrollView>
 
-      {/* Modal for Add/Edit Friend */}
-      <Modal
-        visible={isModalVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={closeModal}
+      {/* ActionSheet for Add/Edit Friend */}
+      <ActionSheet
+        ref={addFriendSheetRef}
+        containerStyle={{
+          backgroundColor: colors.background,
+        }}
+        headerAlwaysVisible={true}
+        gestureEnabled={true}
+        closeOnPressBack={true}
+        onClose={closeModal}
       >
         <SafeAreaView
           style={[
@@ -363,7 +371,7 @@ export default function FriendsScreen() {
             </View>
           </View>
         </SafeAreaView>
-      </Modal>
+      </ActionSheet>
 
       {/* Profile Sheet Modal */}
       <Modal

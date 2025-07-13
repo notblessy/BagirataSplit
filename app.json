@@ -13,6 +13,8 @@
       "bundleIdentifier": "keepgoing.Bagirata",
       "buildNumber": "2",
       "infoPlist": {
+        "NSCameraUsageDescription": "Bagirata needs access to your camera to scan receipts and extract text for bill splitting.",
+        "NSPhotoLibraryUsageDescription": "Bagirata needs access to your photo library to import receipt images for processing.",
         "GADApplicationIdentifier": "ca-app-pub-8857414531432199~1645598742",
         "NSAllowsArbitraryLoads": true,
         "NSAppTransportSecurity": {

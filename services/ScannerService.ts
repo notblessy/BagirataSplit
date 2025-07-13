@@ -1,4 +1,4 @@
-import { Alert, Platform, PermissionsAndroid } from "react-native";
+import { Alert, PermissionsAndroid, Platform } from "react-native";
 import DocumentScanner from "react-native-document-scanner-plugin";
 import { OCRService } from "./OCRService";
 
@@ -57,17 +57,38 @@ export class ScannerService {
         };
       }
 
-      const { scannedImages, status } = await DocumentScanner.scanDocument({
+      console.log("Starting document scan...");
+
+      // Check if DocumentScanner is available
+      if (
+        !DocumentScanner ||
+        typeof DocumentScanner.scanDocument !== "function"
+      ) {
+        console.error("DocumentScanner is not available");
+        return {
+          scannedImages: [],
+          status: "error",
+          message: "Document scanner is not available",
+        };
+      }
+
+      const result = await DocumentScanner.scanDocument({
         maxNumDocuments: 1,
         croppedImageQuality: 100,
       });
 
-      if (status === "success" && scannedImages && scannedImages.length > 0) {
+      console.log("Document scan result:", result);
+
+      if (
+        result.status === "success" &&
+        result.scannedImages &&
+        result.scannedImages.length > 0
+      ) {
         return {
-          scannedImages,
+          scannedImages: result.scannedImages,
           status: "success",
         };
-      } else if (status === "cancel") {
+      } else if (result.status === "cancel") {
         return {
           scannedImages: [],
           status: "cancelled",
@@ -82,6 +103,33 @@ export class ScannerService {
       }
     } catch (error: any) {
       console.error("Document scanning error:", error);
+
+      // Handle specific iOS errors
+      if (Platform.OS === "ios") {
+        if (
+          error.message?.includes("camera") ||
+          error.message?.includes("permission")
+        ) {
+          return {
+            scannedImages: [],
+            status: "error",
+            message:
+              "Camera access denied. Please check app permissions in Settings.",
+          };
+        }
+
+        if (
+          error.message?.includes("cancelled") ||
+          error.code === "UserCancel"
+        ) {
+          return {
+            scannedImages: [],
+            status: "cancelled",
+            message: "Document scanning was cancelled",
+          };
+        }
+      }
+
       return {
         scannedImages: [],
         status: "error",
