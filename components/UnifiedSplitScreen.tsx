@@ -28,6 +28,7 @@ import {
   OtherItem,
   SplitItem,
 } from "../types";
+import { useInterstitialAd } from "./InterstitialAdManager";
 
 import ActionSheet, { ActionSheetRef } from "react-native-actions-sheet";
 
@@ -51,6 +52,9 @@ export function UnifiedSplitScreen({
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const { userProfile } = useUserProfile();
+  
+  // Initialize Interstitial Ad Hook
+  const { showInterstitialAd, preloadAd } = useInterstitialAd();
 
   const [currentStep, setCurrentStep] = useState<FlowStep>("review");
   const [currentSplitData, setCurrentSplitData] = useState<SplitItem | null>(
@@ -317,6 +321,11 @@ export function UnifiedSplitScreen({
     }
   }, [isManualEntry, currentSplitData]);
 
+  // Preload interstitial ad when component mounts
+  useEffect(() => {
+    preloadAd();
+  }, [preloadAd]);
+
   // Navigation functions
   const handleNext = () => {
     if (currentStep === "review") {
@@ -383,7 +392,17 @@ export function UnifiedSplitScreen({
 
       setCurrentStep("assign");
     } else if (currentStep === "assign") {
-      setCurrentStep("share");
+      // Show interstitial ad before proceeding to share screen
+      showInterstitialAd()
+        .then(() => {
+          // Ad was shown successfully or no ad was available, proceed to share screen
+          setCurrentStep("share");
+        })
+        .catch((error) => {
+          // Ad failed to show, but continue to share screen anyway
+          console.log('Interstitial ad failed to show, continuing to share screen:', error);
+          setCurrentStep("share");
+        });
     } else if (currentStep === "share") {
       if (currentSplitData) {
         handleShareSplit();

@@ -14,6 +14,7 @@ import { useColorScheme } from "../hooks/useColorScheme";
 import { DataService } from "../services/DataService";
 import { DatabaseService } from "../services/DatabaseService";
 import { Splitted, SplittedFriend } from "../types";
+import BannerAdComponent from "./BannerAd";
 import { ThemedText } from "./ThemedText";
 import { ThemedView } from "./ThemedView";
 
@@ -243,6 +244,9 @@ export default function HistoryDetailPage({
             {split.friends.map((friend) => renderFriendCard(friend))}
           </ThemedView>
         </ScrollView>
+
+        {/* Banner Ad at bottom */}
+        <BannerAdComponent style={styles.bannerAd} />
       </SafeAreaView>
     </Modal>
   );
@@ -398,5 +402,9 @@ const styles = StyleSheet.create({
   friendSubtotalText: {
     fontSize: 14,
     marginBottom: 2,
+  },
+  bannerAd: {
+    paddingVertical: 8,
+    backgroundColor: 'transparent',
   },
 });

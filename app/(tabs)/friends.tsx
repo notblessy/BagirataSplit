@@ -342,7 +342,6 @@ export default function FriendsScreen() {
                 placeholderTextColor={colors.icon}
                 value={newFriendName}
                 onChangeText={setNewFriendName}
-                autoFocus
               />
             </View>
 
