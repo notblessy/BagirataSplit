@@ -559,6 +559,10 @@ export class DatabaseService {
       bankName: string;
       accountNumber: string;
       accountName: string;
+    },
+    shareInfo?: {
+      shareUrl: string;
+      slug: string;
     }
   ): Promise<void> {
     await this.ensureInitialized();
@@ -566,10 +570,16 @@ export class DatabaseService {
 
     const createdAtStr = splitData.createdAt.toISOString();
 
-    // Insert split bill
+    // Insert split bill with share info
     await this.db.runAsync(
-      "INSERT OR REPLACE INTO split_bills (id, name, createdAt) VALUES (?, ?, ?)",
-      [splitData.id, splitData.name, createdAtStr]
+      "INSERT OR REPLACE INTO split_bills (id, name, slug, shareUrl, createdAt) VALUES (?, ?, ?, ?, ?)",
+      [
+        splitData.id, 
+        splitData.name, 
+        shareInfo?.slug || null,
+        shareInfo?.shareUrl || null,
+        createdAtStr
+      ]
     );
 
     // Save items

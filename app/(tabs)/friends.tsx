@@ -1,10 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -77,7 +75,13 @@ export default function FriendsScreen() {
     loadData();
   }, [loadData]);
 
-  const handleAddFriend = async () => {
+  const closeAddFriendSheet = useCallback(() => {
+    setEditingFriend(null);
+    setNewFriendName("");
+    addFriendSheetRef.current?.hide();
+  }, []);
+
+  const handleAddFriend = useCallback(async () => {
     if (newFriendName.trim()) {
       const newFriend = await DatabaseService.addFriend({
         name: newFriendName.trim(),
@@ -89,15 +93,15 @@ export default function FriendsScreen() {
         closeAddFriendSheet();
       }
     }
-  };
+  }, [newFriendName, loadData, closeAddFriendSheet]);
 
-  const handleEditFriend = (friend: Friend) => {
+  const handleEditFriend = useCallback((friend: Friend) => {
     setEditingFriend(friend);
     setNewFriendName(friend.name);
     addFriendSheetRef.current?.show();
-  };
+  }, []);
 
-  const handleUpdateFriend = async () => {
+  const handleUpdateFriend = useCallback(async () => {
     if (editingFriend && newFriendName.trim()) {
       const updatedFriend = await DatabaseService.updateFriend(
         editingFriend.id,
@@ -110,9 +114,9 @@ export default function FriendsScreen() {
         closeAddFriendSheet();
       }
     }
-  };
+  }, [editingFriend, newFriendName, loadData, closeAddFriendSheet]);
 
-  const handleDeleteFriend = (friend: Friend) => {
+  const handleDeleteFriend = useCallback((friend: Friend) => {
     Alert.alert(
       "Delete Friend",
       `Are you sure you want to delete ${friend.name}?`,
@@ -132,21 +136,40 @@ export default function FriendsScreen() {
         },
       ]
     );
-  };
+  }, [loadData]);
 
-  const openAddFriendModal = () => {
+  // Pre-calculate styles for better performance
+  const modalStyles = useMemo(() => ({
+    container: {
+      backgroundColor: colors.background,
+      height: 350,
+      maxHeight: 450, // Reduced height for better performance
+    },
+    modalContainer: {
+      backgroundColor: colors.background,
+    },
+    textInput: {
+      borderColor: colors.tint,
+      color: colors.text,
+    },
+    cancelButton: {
+      backgroundColor: colorScheme === "dark" ? "#3A3A3C" : "#f0f0f0",
+    },
+    cancelButtonText: {
+      color: colorScheme === "dark" ? "#fff" : "#666",
+    },
+    saveButton: {
+      backgroundColor: colors.tint,
+    },
+  }), [colors.background, colors.tint, colors.text, colorScheme]);
+
+  const openAddFriendModal = useCallback(() => {
     setEditingFriend(null);
     setNewFriendName("");
     addFriendSheetRef.current?.show();
-  };
+  }, []);
 
-  const closeAddFriendSheet = () => {
-    setEditingFriend(null);
-    setNewFriendName("");
-    addFriendSheetRef.current?.hide();
-  };
-
-  const renderFriendCard = (friend: Friend) => (
+  const renderFriendCard = useCallback((friend: Friend) => (
     <TouchableOpacity
       key={friend.id}
       style={[
@@ -177,7 +200,7 @@ export default function FriendsScreen() {
         <Ionicons name="trash-outline" size={20} color="#ff4444" />
       </TouchableOpacity>
     </TouchableOpacity>
-  );
+  ), [colorScheme, friendSplitCounts, handleEditFriend, handleDeleteFriend]);
 
   return (
     <SafeAreaView
@@ -295,28 +318,17 @@ export default function FriendsScreen() {
         gestureEnabled={true}
         closeOnPressBack={true}
         onClose={closeAddFriendSheet}
-        keyboardHandlerEnabled={true}
-        enableRouterBackNavigation={false}
       >
-        <KeyboardAvoidingView
+        <View
           style={[
             styles.bottomSheetContainer,
-            {
-              backgroundColor: colors.background,
-              height: 300,
-              maxHeight: 450,
-            },
+            modalStyles.container,
           ]}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
           <SafeAreaView
             style={[
               styles.modalContainer,
-              {
-                backgroundColor: colors.background,
-                flex: 1,
-              },
+              modalStyles.modalContainer,
             ]}
           >
             <View
@@ -339,7 +351,6 @@ export default function FriendsScreen() {
 
             <ScrollView
               style={styles.modalContent}
-              contentContainerStyle={{ flexGrow: 1 }}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
@@ -353,13 +364,12 @@ export default function FriendsScreen() {
                 <TextInput
                   style={[
                     styles.textInput,
-                    { borderColor: colors.tint, color: colors.text },
+                    modalStyles.textInput,
                   ]}
                   value={newFriendName}
                   onChangeText={setNewFriendName}
                   placeholder="Friend's name"
                   placeholderTextColor={colors.text + "60"}
-                  autoFocus={true}
                   returnKeyType="done"
                   onSubmitEditing={editingFriend ? handleUpdateFriend : handleAddFriend}
                   blurOnSubmit={true}
@@ -370,17 +380,14 @@ export default function FriendsScreen() {
                 <TouchableOpacity
                   style={[
                     styles.modalButton,
-                    {
-                      backgroundColor:
-                        colorScheme === "dark" ? "#3A3A3C" : "#f0f0f0",
-                    },
+                    modalStyles.cancelButton,
                   ]}
                   onPress={closeAddFriendSheet}
                 >
                   <Text
                     style={[
                       styles.cancelButtonText,
-                      { color: colorScheme === "dark" ? "#fff" : "#666" },
+                      modalStyles.cancelButtonText,
                     ]}
                   >
                     Cancel
@@ -390,9 +397,7 @@ export default function FriendsScreen() {
                 <TouchableOpacity
                   style={[
                     styles.modalButton,
-                    {
-                      backgroundColor: colors.tint,
-                    },
+                    modalStyles.saveButton,
                   ]}
                   onPress={editingFriend ? handleUpdateFriend : handleAddFriend}
                 >
@@ -403,7 +408,7 @@ export default function FriendsScreen() {
               </View>
             </ScrollView>
           </SafeAreaView>
-        </KeyboardAvoidingView>
+        </View>
       </ActionSheet>
 
 
@@ -606,12 +611,8 @@ const styles = StyleSheet.create({
     borderColor: "#4ECDC4",
   },
   bottomSheetContainer: {
-    position: "absolute",
-    bottom: 0,
-    width: "100%",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    elevation: 5,
-    maxHeight: "80%",
+    paddingBottom: 20,
   },
 });

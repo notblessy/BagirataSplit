@@ -19,7 +19,6 @@ import { DataService } from "../services/DataService";
 import { DatabaseService } from "../services/DatabaseService";
 import { SplitApiService } from "../services/SplitApiService";
 import { Splitted, SplittedFriend } from "../types";
-import BannerAdComponent from "./BannerAd";
 import { ThemedText } from "./ThemedText";
 import { ThemedView } from "./ThemedView";
 
@@ -218,7 +217,7 @@ export default function HistoryDetailPage({
   };
 
   const handleReshareLink = async () => {
-    if (!split.shareUrl && !split.slug) {
+    if (!split.slug) {
       Alert.alert("Error", "This split doesn't have a share link available.");
       return;
     }
@@ -534,13 +533,12 @@ const styles = StyleSheet.create({
   actionsContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingBottom: 16,
+    padding: 20,
   },
   actionButton: {
     flex: 1,
     borderRadius: 12,
-    paddingVertical: 16,
+    padding: 10,
     alignItems: "center",
     justifyContent: "center",
     marginHorizontal: 8,
@@ -549,6 +547,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
+    marginBottom: 20
   },
   actionButtonContent: {
     flexDirection: "row",
@@ -557,7 +556,7 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
   },
 });

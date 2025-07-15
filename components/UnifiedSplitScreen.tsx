@@ -493,12 +493,19 @@ export function UnifiedSplitScreen({
       const saveResponse = await BagirataApiService.saveSplit(backendData);
 
       if (saveResponse.success) {
-        // Save to SQLite for history
+        const shareUrl = `https://bagirata.notblessy.com/view/${saveResponse.data}`;
+        const slug = saveResponse.data;
+
+        // Save to SQLite for history with share info
         try {
           await DatabaseService.saveSplitToHistory(
             currentSplitData,
             participants,
-            bankInfo
+            bankInfo,
+            {
+              shareUrl,
+              slug,
+            }
           );
         } catch (sqliteError) {
           console.warn("Failed to save to SQLite history:", sqliteError);
@@ -508,8 +515,8 @@ export function UnifiedSplitScreen({
         // Success! Call the onShare callback with the share URL
         onShare({
           ...currentSplitData,
-          shareUrl: `https://bagirata.notblessy.com/view/${saveResponse.data}`,
-          slug: saveResponse.data,
+          shareUrl,
+          slug,
         });
 
         Alert.alert(
@@ -1130,18 +1137,18 @@ export function UnifiedSplitScreen({
       </View>
 
       {/* Content */}
-      <Animated.View 
-        style={[
-          { flex: 1 },
-          {
-            transform: [{ translateY: slideAnim }],
-            opacity: fadeAnim,
-          }
-        ]}
-      >
-        <ScrollView style={styles.content}>
+      <ScrollView style={styles.content}>
+        <Animated.View 
+          style={[
+            styles.stepContent,
+            {
+              transform: [{ translateY: slideAnim }],
+              opacity: fadeAnim,
+            }
+          ]}
+        >
         {currentStep === "review" && (
-          <View style={styles.stepContent}>
+          <View>
             {/* Split Title */}
             <View style={styles.section}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>
@@ -1799,8 +1806,8 @@ export function UnifiedSplitScreen({
             </View>
           </View>
         )}
+        </Animated.View>
       </ScrollView>
-      </Animated.View>
 
       {/* Bottom Actions */}
       <View style={styles.bottomActions}>
