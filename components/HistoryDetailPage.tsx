@@ -22,6 +22,8 @@ import { Splitted, SplittedFriend } from "../types";
 import { ThemedText } from "./ThemedText";
 import { ThemedView } from "./ThemedView";
 
+import BannerAdComponent from "./BannerAd";
+
 interface HistoryDetailPageProps {
   split: Splitted;
   visible: boolean;
