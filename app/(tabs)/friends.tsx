@@ -2,13 +2,15 @@ import { Ionicons } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import ActionSheet, { ActionSheetRef } from "react-native-actions-sheet";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -84,8 +86,7 @@ export default function FriendsScreen() {
       });
       if (newFriend) {
         loadData(); // Reload data to get fresh state
-        setNewFriendName("");
-        addFriendSheetRef.current?.hide();
+        closeAddFriendSheet();
       }
     }
   };
@@ -106,9 +107,7 @@ export default function FriendsScreen() {
       );
       if (updatedFriend) {
         loadData();
-        setNewFriendName("");
-        setEditingFriend(null);
-        addFriendSheetRef.current?.hide();
+        closeAddFriendSheet();
       }
     }
   };
@@ -141,7 +140,7 @@ export default function FriendsScreen() {
     addFriendSheetRef.current?.show();
   };
 
-  const closeModal = () => {
+  const closeAddFriendSheet = () => {
     setEditingFriend(null);
     setNewFriendName("");
     addFriendSheetRef.current?.hide();
@@ -295,82 +294,118 @@ export default function FriendsScreen() {
         headerAlwaysVisible={true}
         gestureEnabled={true}
         closeOnPressBack={true}
-        onClose={closeModal}
+        onClose={closeAddFriendSheet}
+        keyboardHandlerEnabled={true}
+        enableRouterBackNavigation={false}
       >
-        <SafeAreaView
+        <KeyboardAvoidingView
           style={[
-            styles.modalContainer,
-            { backgroundColor: colors.background },
+            styles.bottomSheetContainer,
+            {
+              backgroundColor: colors.background,
+              height: 300,
+              maxHeight: 450,
+            },
           ]}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
-          <View
+          <SafeAreaView
             style={[
-              styles.modalHeader,
+              styles.modalContainer,
               {
-                borderBottomColor:
-                  colorScheme === "dark" ? "#3c3c3e" : "#e0e0e0",
+                backgroundColor: colors.background,
+                flex: 1,
               },
             ]}
           >
-            <TouchableOpacity onPress={closeModal}>
-              <Ionicons name="close" size={24} color={colors.text} />
-            </TouchableOpacity>
-            <ThemedText type="subtitle" style={styles.modalTitle}>
-              {editingFriend
-                ? editingFriend.me
-                  ? "Edit My Profile"
-                  : "Edit Friend"
-                : "Add New Friend"}
-            </ThemedText>
-            <View style={{ width: 24 }} />
-          </View>
-
-          <View style={styles.modalContent}>
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color={colors.icon}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[
-                  styles.textInput,
-                  { borderColor: colors.tint, color: colors.text },
-                ]}
-                placeholder={editingFriend?.me ? "Your name" : "Friend's name"}
-                placeholderTextColor={colors.icon}
-                value={newFriendName}
-                onChangeText={setNewFriendName}
-              />
+            <View
+              style={[
+                styles.modalHeader,
+                {
+                  borderBottomColor:
+                    colorScheme === "dark" ? "#3c3c3e" : "#e0e0e0",
+                },
+              ]}
+            >
+              <TouchableOpacity onPress={closeAddFriendSheet}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                {editingFriend ? "Edit Friend" : "Add Friend"}
+              </Text>
+              <View style={{ width: 24 }} />
             </View>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={closeModal}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.tint }]}
-                onPress={editingFriend ? handleUpdateFriend : handleAddFriend}
-                disabled={!newFriendName.trim()}
-              >
-                <Text
+            <ScrollView
+              style={styles.modalContent}
+              contentContainerStyle={{ flexGrow: 1 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.inputContainer}>
+                <Ionicons
+                  name="person-outline"
+                  size={20}
+                  color={colors.icon}
+                  style={styles.inputIcon}
+                />
+                <TextInput
                   style={[
-                    styles.saveButtonText,
-                    { opacity: newFriendName.trim() ? 1 : 0.5 },
+                    styles.textInput,
+                    { borderColor: colors.tint, color: colors.text },
                   ]}
+                  value={newFriendName}
+                  onChangeText={setNewFriendName}
+                  placeholder="Friend's name"
+                  placeholderTextColor={colors.text + "60"}
+                  autoFocus={true}
+                  returnKeyType="done"
+                  onSubmitEditing={editingFriend ? handleUpdateFriend : handleAddFriend}
+                  blurOnSubmit={true}
+                />
+              </View>
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[
+                    styles.modalButton,
+                    {
+                      backgroundColor:
+                        colorScheme === "dark" ? "#3A3A3C" : "#f0f0f0",
+                    },
+                  ]}
+                  onPress={closeAddFriendSheet}
                 >
-                  {editingFriend ? "Update" : "Add"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </SafeAreaView>
+                  <Text
+                    style={[
+                      styles.cancelButtonText,
+                      { color: colorScheme === "dark" ? "#fff" : "#666" },
+                    ]}
+                  >
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.modalButton,
+                    {
+                      backgroundColor: colors.tint,
+                    },
+                  ]}
+                  onPress={editingFriend ? handleUpdateFriend : handleAddFriend}
+                >
+                  <Text style={styles.saveButtonText}>
+                    {editingFriend ? "Update Friend" : "Add Friend"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
       </ActionSheet>
+
 
       {/* Profile Sheet Modal */}
       <Modal
@@ -506,16 +541,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
-  sheetContent: {
-    flex: 1,
-    padding: 24,
-  },
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 20,
-    textAlign: "center",
-  },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -530,17 +555,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     fontSize: 16,
-  },
-  sheetButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  sheetButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    alignItems: "center",
-    marginHorizontal: 6,
   },
   modalContainer: {
     flex: 1,
@@ -560,11 +574,11 @@ const styles = StyleSheet.create({
   modalContent: {
     flex: 1,
     padding: 24,
-    maxHeight: 450,
   },
   modalButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
+    gap: 12,
     marginTop: 20,
   },
   modalButton: {
@@ -590,5 +604,14 @@ const styles = StyleSheet.create({
   profileCard: {
     borderWidth: 2,
     borderColor: "#4ECDC4",
+  },
+  bottomSheetContainer: {
+    position: "absolute",
+    bottom: 0,
+    width: "100%",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    elevation: 5,
+    maxHeight: "80%",
   },
 });
