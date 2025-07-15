@@ -36,6 +36,16 @@ export default function HistoryScreen() {
   const [selectedSplit, setSelectedSplit] = useState<Splitted | null>(null);
   const [showDetailPage, setShowDetailPage] = useState(false);
 
+  // Function to reload splits data
+  const reloadSplits = async () => {
+    try {
+      const bills = await DatabaseService.getAllSplittedBills();
+      setAllSplittedBills(bills);
+    } catch (error) {
+      console.error("Error reloading splits:", error);
+    }
+  };
+
   // Initialize database and load data
   useEffect(() => {
     const initializeData = async () => {
@@ -341,6 +351,7 @@ export default function HistoryScreen() {
             setShowDetailPage(false);
             setSelectedSplit(null);
           }}
+          onSplitDeleted={reloadSplits}
         />
       )}
     </SafeAreaView>

@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   ScrollView,
   StyleSheet,
   Text,
@@ -108,6 +109,10 @@ export function UnifiedSplitScreen({
 
   // Recognition states
   const [isRecognizing, setIsRecognizing] = useState(false);
+
+  // Animation states
+  const [slideAnim] = useState(new Animated.Value(0));
+  const [fadeAnim] = useState(new Animated.Value(1));
 
   // ActionSheet refs
   const addItemSheetRef = useRef<ActionSheetRef>(null);
@@ -326,6 +331,41 @@ export function UnifiedSplitScreen({
     preloadAd();
   }, [preloadAd]);
 
+  // Animation helper function
+  const animateStepTransition = (callback: () => void) => {
+    // Slide out current content
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: -50,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      // Execute step change
+      callback();
+      
+      // Reset position and slide in new content
+      slideAnim.setValue(50);
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  };
+
   // Navigation functions
   const handleNext = () => {
     if (currentStep === "review") {
@@ -372,8 +412,8 @@ export function UnifiedSplitScreen({
         };
 
         setCurrentSplitData(newSplitData);
-        // Continue to next step immediately
-        setCurrentStep("assign");
+        // Continue to next step immediately with animation
+        animateStepTransition(() => setCurrentStep("assign"));
         return;
       }
 
@@ -390,18 +430,18 @@ export function UnifiedSplitScreen({
         return;
       }
 
-      setCurrentStep("assign");
+      animateStepTransition(() => setCurrentStep("assign"));
     } else if (currentStep === "assign") {
       // Show interstitial ad before proceeding to share screen
       showInterstitialAd()
         .then(() => {
           // Ad was shown successfully or no ad was available, proceed to share screen
-          setCurrentStep("share");
+          animateStepTransition(() => setCurrentStep("share"));
         })
         .catch((error) => {
           // Ad failed to show, but continue to share screen anyway
           console.log('Interstitial ad failed to show, continuing to share screen:', error);
-          setCurrentStep("share");
+          animateStepTransition(() => setCurrentStep("share"));
         });
     } else if (currentStep === "share") {
       if (currentSplitData) {
@@ -414,9 +454,9 @@ export function UnifiedSplitScreen({
     if (currentStep === "review") {
       onBack();
     } else if (currentStep === "assign") {
-      setCurrentStep("review");
+      animateStepTransition(() => setCurrentStep("review"));
     } else if (currentStep === "share") {
-      setCurrentStep("assign");
+      animateStepTransition(() => setCurrentStep("assign"));
     }
   };
 
@@ -1090,7 +1130,16 @@ export function UnifiedSplitScreen({
       </View>
 
       {/* Content */}
-      <ScrollView style={styles.content}>
+      <Animated.View 
+        style={[
+          { flex: 1 },
+          {
+            transform: [{ translateY: slideAnim }],
+            opacity: fadeAnim,
+          }
+        ]}
+      >
+        <ScrollView style={styles.content}>
         {currentStep === "review" && (
           <View style={styles.stepContent}>
             {/* Split Title */}
@@ -1751,6 +1800,7 @@ export function UnifiedSplitScreen({
           </View>
         )}
       </ScrollView>
+      </Animated.View>
 
       {/* Bottom Actions */}
       <View style={styles.bottomActions}>

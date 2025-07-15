@@ -560,6 +560,7 @@ const styles = StyleSheet.create({
   modalContent: {
     flex: 1,
     padding: 24,
+    maxHeight: 450,
   },
   modalButtons: {
     flexDirection: "row",

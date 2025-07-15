@@ -1,5 +1,5 @@
 import axios from "axios";
-import { AssignedItem, OtherItem, Friend } from "../types";
+import { AssignedItem, Friend, OtherItem } from "../types";
 
 // Base API configuration for Bagirata backend
 const API_BASE_URL = "https://bagirata.sepiksel.com"; // Using the same endpoint as iOS app
@@ -131,6 +131,19 @@ export class BagirataApiService {
     } catch (error: any) {
       console.error("Save split error:", error);
       throw new Error("Failed to save split to backend");
+    }
+  }
+
+  /**
+   * Delete split bill from backend
+   */
+  static async deleteSplit(slug: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await apiClient.delete(`/v1/splits/${slug}`);
+      return response.data;
+    } catch (error: any) {
+      console.error("Delete split error:", error);
+      throw new Error("Failed to delete split from backend");
     }
   }
 }

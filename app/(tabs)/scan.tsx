@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Animated,
+  Dimensions,
   Platform,
   ScrollView,
   Share,
@@ -16,6 +17,8 @@ import { UnifiedSplitScreen } from "../../components/UnifiedSplitScreen";
 import { Colors } from "../../constants/Colors";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { ScannerService } from "../../services/ScannerService";
+
+const { width: screenWidth } = Dimensions.get("window");
 
 const TIPS = [
   {
@@ -50,22 +53,26 @@ export default function ScanScreen() {
   >("main");
   const [scannedText, setScannedText] = useState<string | null>(null);
 
+  // Animation values for screen transitions
+  const [slideAnim] = useState(new Animated.Value(0));
+  const [fadeAnim] = useState(new Animated.Value(1));
+
   // Tips slideshow state
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
-  const [fadeAnim] = useState(new Animated.Value(1));
+  const [tipFadeAnim] = useState(new Animated.Value(1));
   const [isAnimating, setIsAnimating] = useState(false);
 
   const advanceTip = useCallback(() => {
     if (isAnimating) return;
 
     setIsAnimating(true);
-    Animated.timing(fadeAnim, {
+    Animated.timing(tipFadeAnim, {
       toValue: 0,
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
       setCurrentTipIndex((prevIndex) => (prevIndex + 1) % TIPS.length);
-      Animated.timing(fadeAnim, {
+      Animated.timing(tipFadeAnim, {
         toValue: 1,
         duration: 300,
         useNativeDriver: true,
@@ -73,7 +80,7 @@ export default function ScanScreen() {
         setIsAnimating(false);
       });
     });
-  }, [isAnimating, fadeAnim]);
+  }, [isAnimating, tipFadeAnim]);
 
   // Auto-rotate tips every 3 seconds
   useEffect(() => {
@@ -99,6 +106,59 @@ export default function ScanScreen() {
       setIsAnimating(false);
     }
   }, [currentScreen]);
+
+  // Animate screen transitions
+  const animateToScreen = (screen: "main" | "split" | "manual") => {
+    if (screen !== "main") {
+      // Slide in new screen
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: -screenWidth,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setCurrentScreen(screen);
+        slideAnim.setValue(screenWidth);
+        fadeAnim.setValue(0);
+        Animated.parallel([
+          Animated.timing(slideAnim, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
+    } else {
+      // Return to main screen
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: screenWidth,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setCurrentScreen(screen);
+        slideAnim.setValue(0);
+        fadeAnim.setValue(1);
+      });
+    }
+  };
 
   const handleScanReceipt = async () => {
     setIsScanning(true);
@@ -132,7 +192,7 @@ export default function ScanScreen() {
       if (scanResult.success && scanResult.text) {
         // Store the extracted text for recognition processing
         setScannedText(scanResult.text);
-        setCurrentScreen("split");
+        animateToScreen("split");
       } else {
         Alert.alert(
           "Scan Failed",
@@ -179,11 +239,11 @@ export default function ScanScreen() {
   };
 
   const handleManualEntry = () => {
-    setCurrentScreen("manual");
+    animateToScreen("manual");
   };
 
   const handleBackToMain = () => {
-    setCurrentScreen("main");
+    animateToScreen("main");
     setScannedText(null);
   };
 
@@ -237,10 +297,19 @@ export default function ScanScreen() {
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
     >
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
+      <Animated.View 
+        style={[
+          styles.animatedContent,
+          {
+            transform: [{ translateX: slideAnim }],
+            opacity: fadeAnim,
+          }
+        ]}
       >
+        <ScrollView
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+        >
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerIcon}>
@@ -263,7 +332,7 @@ export default function ScanScreen() {
                 {
                   backgroundColor: TIPS[currentTipIndex].backgroundColor,
                   borderLeftColor: TIPS[currentTipIndex].color,
-                  opacity: fadeAnim,
+                  opacity: tipFadeAnim,
                 },
               ]}
             >
@@ -389,12 +458,16 @@ export default function ScanScreen() {
           </View>
         </View>
       </ScrollView>
+      </Animated.View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  animatedContent: {
     flex: 1,
   },
   scrollView: {

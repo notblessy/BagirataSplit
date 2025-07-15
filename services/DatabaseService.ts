@@ -5,7 +5,7 @@ export class DatabaseService {
   private static db: SQLite.SQLiteDatabase | null = null;
   private static isInitialized: boolean = false;
   private static initializationPromise: Promise<void> | null = null;
-  private static readonly DB_VERSION = 2; // Increment when schema changes
+  private static readonly DB_VERSION = 3; // Increment when schema changes
 
   // Initialize database
   static async initializeDatabase(): Promise<void> {
@@ -94,6 +94,8 @@ export class DatabaseService {
       CREATE TABLE IF NOT EXISTS split_bills (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        slug TEXT,
+        shareUrl TEXT,
         createdAt TEXT NOT NULL
       );
     `);
@@ -186,8 +188,17 @@ export class DatabaseService {
           `Migrating database from version ${currentVersion} to ${this.DB_VERSION}`
         );
 
-        // For now, we'll just set the version
-        // In the future, add specific migration logic here
+        // Migration logic for different versions
+        if (currentVersion < 3) {
+          // Add slug and shareUrl columns to split_bills table
+          await this.db.execAsync(`
+            ALTER TABLE split_bills ADD COLUMN slug TEXT;
+          `);
+          await this.db.execAsync(`
+            ALTER TABLE split_bills ADD COLUMN shareUrl TEXT;
+          `);
+        }
+
         await this.db.execAsync(`PRAGMA user_version = ${this.DB_VERSION}`);
 
         console.log("Database migration completed");
@@ -336,6 +347,29 @@ export class DatabaseService {
     return result.changes > 0;
   }
 
+  static async deleteSplit(id: string): Promise<boolean> {
+    await this.ensureInitialized();
+    if (!this.db) throw new Error("Database not initialized");
+
+    // Due to CASCADE delete constraints, deleting the split_bill will automatically
+    // delete all related records in split_bill_friends, split_bill_items, 
+    // split_bill_item_assignments, split_bill_other_payments, and split_bill_other_payment_assignments
+    const result = await this.db.runAsync("DELETE FROM split_bills WHERE id = ?", [
+      id,
+    ]);
+    return result.changes > 0;
+  }
+
+  static async updateSplitShareInfo(id: string, slug?: string, shareUrl?: string): Promise<boolean> {
+    await this.ensureInitialized();
+    if (!this.db) throw new Error("Database not initialized");
+
+    const result = await this.db.runAsync(
+      "UPDATE split_bills SET slug = ?, shareUrl = ? WHERE id = ?",
+      [slug || null, shareUrl || null, id]
+    );
+    return result.changes > 0;
+  }
   // Split bills CRUD operations
   static async getAllSplittedBills(): Promise<Splitted[]> {
     await this.ensureInitialized();
@@ -414,6 +448,8 @@ export class DatabaseService {
       result.push({
         id: (bill as any).id,
         name: (bill as any).name,
+        slug: (bill as any).slug,
+        shareUrl: (bill as any).shareUrl,
         createdAt: new Date((bill as any).createdAt),
         friends: friendsWithDetails,
       });

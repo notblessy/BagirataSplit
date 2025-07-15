@@ -84,6 +84,8 @@ export interface SplittedFriend {
 export interface Splitted {
   id: string;
   name: string;
+  slug?: string; // Backend slug for API calls
+  shareUrl?: string; // Share URL for the split
   friends: SplittedFriend[];
   createdAt: Date;
 }

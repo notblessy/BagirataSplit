@@ -1,8 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
+import React, { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Modal,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -11,8 +14,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
+import { BagirataApiService } from "../services/BagirataApiService";
 import { DataService } from "../services/DataService";
 import { DatabaseService } from "../services/DatabaseService";
+import { SplitApiService } from "../services/SplitApiService";
 import { Splitted, SplittedFriend } from "../types";
 import BannerAdComponent from "./BannerAd";
 import { ThemedText } from "./ThemedText";
@@ -22,15 +27,18 @@ interface HistoryDetailPageProps {
   split: Splitted;
   visible: boolean;
   onClose: () => void;
+  onSplitDeleted?: () => void; // Callback when split is deleted
 }
 
 export default function HistoryDetailPage({
   split,
   visible,
   onClose,
+  onSplitDeleted,
 }: HistoryDetailPageProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
+  const [isLoading, setIsLoading] = useState(false);
 
   const formatCurrency = (amount: number) => {
     return DataService.formatCurrency(amount);
@@ -165,6 +173,86 @@ export default function HistoryDetailPage({
     );
   };
 
+  const handleDeleteSplit = () => {
+    Alert.alert(
+      "Delete Split",
+      `Are you sure you want to delete "${split.name}"? This action cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              // Delete from local database
+              const deleted = await DataService.deleteSplit(split.id);
+
+              if (deleted) {
+                // If split has a slug, try to delete from backend
+                if (split.slug) {
+                  try {
+                    await BagirataApiService.deleteSplit(split.slug);
+                  } catch (error) {
+                    console.warn("Failed to delete split from backend:", error);
+                    // Don't fail the whole operation if backend deletion fails
+                  }
+                }
+
+                // Call the callback to refresh the history list
+                onSplitDeleted?.();
+                onClose();
+              } else {
+                throw new Error("Failed to delete split");
+              }
+            } catch (error: any) {
+              console.error("Delete split error:", error);
+              Alert.alert("Error", "Failed to delete split. Please try again.");
+            } finally {
+              setIsLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleReshareLink = async () => {
+    if (!split.shareUrl && !split.slug) {
+      Alert.alert("Error", "This split doesn't have a share link available.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      let shareUrl = split.shareUrl;
+
+      // If we have a slug but no shareUrl, generate a new share link
+      if (split.slug && !shareUrl) {
+        const shareResponse = await SplitApiService.generateShare(split.slug);
+        shareUrl = shareResponse.data.share_url;
+
+        // Update the local database with the new share URL
+        await DataService.updateSplitShareInfo(split.id, split.slug, shareUrl);
+      }
+
+      if (shareUrl) {
+        await Share.share({
+          message: `Check out this split bill: ${split.name}\n\nView and pay your share: ${shareUrl}`,
+          url: shareUrl,
+          title: `Split Bill: ${split.name}`,
+        });
+      } else {
+        throw new Error("Unable to get share URL");
+      }
+    } catch (error: any) {
+      console.error("Reshare error:", error);
+      Alert.alert("Error", "Failed to generate share link. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -244,6 +332,42 @@ export default function HistoryDetailPage({
             {split.friends.map((friend) => renderFriendCard(friend))}
           </ThemedView>
         </ScrollView>
+
+        {/* Actions */}
+        <View style={styles.actionsContainer}>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.tint }]}
+            onPress={handleReshareLink}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <View style={styles.actionButtonContent}>
+                <Ionicons name="share-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <ThemedText style={styles.actionButtonText}>
+                  Reshare Link
+                </ThemedText>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: "#FF3B30" }]}
+            onPress={handleDeleteSplit}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <View style={styles.actionButtonContent}>
+                <Ionicons name="trash-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <ThemedText style={styles.actionButtonText}>
+                  Delete Split
+                </ThemedText>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
 
         {/* Banner Ad at bottom */}
         <BannerAdComponent style={styles.bannerAd} />
@@ -406,5 +530,34 @@ const styles = StyleSheet.create({
   bannerAd: {
     paddingVertical: 8,
     backgroundColor: 'transparent',
+  },
+  actionsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  actionButton: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: 8,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  actionButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

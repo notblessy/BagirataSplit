@@ -29,6 +29,18 @@ export class DataService {
     return await DatabaseService.deleteFriend(id);
   }
 
+  static async deleteSplit(id: string): Promise<boolean> {
+    return await DatabaseService.deleteSplit(id);
+  }
+
+  static async updateSplitShareInfo(
+    id: string,
+    slug?: string,
+    shareUrl?: string
+  ): Promise<boolean> {
+    return await DatabaseService.updateSplitShareInfo(id, slug, shareUrl);
+  }
+
   // Split bills operations
   static async getAllSplittedBills(): Promise<Splitted[]> {
     return await DatabaseService.getAllSplittedBills();
