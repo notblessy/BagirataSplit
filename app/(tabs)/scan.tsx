@@ -4,6 +4,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Linking,
   Platform,
   ScrollView,
   Share,
@@ -217,8 +218,28 @@ export default function ScanScreen() {
               {
                 text: "Open Settings",
                 onPress: () => {
-                  // You can use Linking to open settings
-                  // Linking.openSettings();
+                  Linking.openSettings();
+                },
+              },
+            ]
+          );
+          return;
+        }
+      } else if (Platform.OS === "android") {
+        if (
+          error.message?.includes("camera") ||
+          error.message?.includes("permission") ||
+          error.message?.includes("Camera")
+        ) {
+          Alert.alert(
+            "Camera Permission Required",
+            "Please enable camera access for Bagirata in Settings > Apps > Bagirata > Permissions",
+            [
+              { text: "Cancel" },
+              {
+                text: "Open Settings",
+                onPress: () => {
+                  Linking.openSettings();
                 },
               },
             ]

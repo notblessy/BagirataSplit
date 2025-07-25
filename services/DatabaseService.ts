@@ -352,15 +352,20 @@ export class DatabaseService {
     if (!this.db) throw new Error("Database not initialized");
 
     // Due to CASCADE delete constraints, deleting the split_bill will automatically
-    // delete all related records in split_bill_friends, split_bill_items, 
+    // delete all related records in split_bill_friends, split_bill_items,
     // split_bill_item_assignments, split_bill_other_payments, and split_bill_other_payment_assignments
-    const result = await this.db.runAsync("DELETE FROM split_bills WHERE id = ?", [
-      id,
-    ]);
+    const result = await this.db.runAsync(
+      "DELETE FROM split_bills WHERE id = ?",
+      [id]
+    );
     return result.changes > 0;
   }
 
-  static async updateSplitShareInfo(id: string, slug?: string, shareUrl?: string): Promise<boolean> {
+  static async updateSplitShareInfo(
+    id: string,
+    slug?: string,
+    shareUrl?: string
+  ): Promise<boolean> {
     await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
@@ -574,11 +579,11 @@ export class DatabaseService {
     await this.db.runAsync(
       "INSERT OR REPLACE INTO split_bills (id, name, slug, shareUrl, createdAt) VALUES (?, ?, ?, ?, ?)",
       [
-        splitData.id, 
-        splitData.name, 
+        splitData.id,
+        splitData.name,
         shareInfo?.slug || null,
         shareInfo?.shareUrl || null,
-        createdAtStr
+        createdAtStr,
       ]
     );
 

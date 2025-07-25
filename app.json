@@ -8,6 +8,7 @@
     "scheme": "bagirata",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "runtimeVersion": "1.0.0",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "keepgoing.Bagirata",
@@ -327,7 +328,8 @@
       "edgeToEdgeEnabled": true,
       "package": "keepgoing.Bagirata",
       "versionCode": 2,
-      "googleServicesFile": "./google-services.json"
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"],
+      "blockedPermissions": ["android.permission.RECORD_AUDIO"]
     },
     "web": {
       "bundler": "metro",
