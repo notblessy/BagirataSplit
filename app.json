@@ -2,7 +2,7 @@
   "expo": {
     "name": "Bagirata",
     "slug": "Bagirata",
-    "version": "2.0.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "bagirata",
@@ -341,7 +341,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/splash.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
@@ -360,7 +360,6 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
       "eas": {
         "projectId": "328e4db8-4c2d-4d04-a8f5-a7ef2782965c"
       }
