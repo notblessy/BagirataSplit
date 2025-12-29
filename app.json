@@ -656,7 +656,9 @@
           "androidAppId": "ca-app-pub-8857414531432199~1645598742",
           "iosAppId": "ca-app-pub-8857414531432199~1645598742"
         }
-      ]
+      ],
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
