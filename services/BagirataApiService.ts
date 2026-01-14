@@ -2,7 +2,7 @@ import axios from "axios";
 import { AssignedItem, Friend, OtherItem } from "../types";
 
 // Base API configuration for Bagirata backend
-const API_BASE_URL = "https://bagirata.sepiksel.com"; // Using the same endpoint as iOS app
+const API_BASE_URL = "https://bagiapi.notblessy.com"; // Using the same endpoint as iOS app
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
