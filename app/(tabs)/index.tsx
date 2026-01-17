@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import HistoryDetailPage from "../../components/HistoryDetailPage";
 import ProfileSheet from "../../components/ProfileSheet";
 import { ThemedText } from "../../components/ThemedText";
@@ -22,6 +22,7 @@ import { Friend, Splitted } from "../../types";
 export default function HistoryScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
+  const insets = useSafeAreaInsets();
   const {
     userProfile,
     refreshUserProfile,
@@ -143,8 +144,17 @@ export default function HistoryScreen() {
     );
   };
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.background,
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
+      ]}
     >
       <ScrollView
         style={styles.scrollView}
@@ -354,7 +364,7 @@ export default function HistoryScreen() {
           onSplitDeleted={reloadSplits}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

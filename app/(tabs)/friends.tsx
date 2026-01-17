@@ -11,7 +11,7 @@ import {
   View
 } from "react-native";
 import ActionSheet, { ActionSheetRef } from "react-native-actions-sheet";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ProfileSheet from "../../components/ProfileSheet";
 import { ThemedText } from "../../components/ThemedText";
 import { ThemedView } from "../../components/ThemedView";
@@ -24,6 +24,7 @@ import { Friend } from "../../types";
 export default function FriendsScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
+  const insets = useSafeAreaInsets();
   const {
     userProfile: myProfile,
     refreshUserProfile,
@@ -203,8 +204,17 @@ export default function FriendsScreen() {
   ), [colorScheme, friendSplitCounts, handleEditFriend, handleDeleteFriend]);
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.background,
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
+      ]}
     >
       <ScrollView
         style={styles.scrollView}
@@ -325,10 +335,14 @@ export default function FriendsScreen() {
             modalStyles.container,
           ]}
         >
-          <SafeAreaView
+          <View
             style={[
               styles.modalContainer,
               modalStyles.modalContainer,
+              {
+                paddingTop: insets.top,
+                paddingBottom: insets.bottom,
+              },
             ]}
           >
             <View
@@ -407,7 +421,7 @@ export default function FriendsScreen() {
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </SafeAreaView>
+          </View>
         </View>
       </ActionSheet>
 
@@ -446,7 +460,7 @@ export default function FriendsScreen() {
           }}
         />
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { UnifiedSplitScreen } from "../../components/UnifiedSplitScreen";
 import { Colors } from "../../constants/Colors";
 import { useColorScheme } from "../../hooks/useColorScheme";
@@ -45,6 +45,7 @@ const TIPS = [
 export default function ScanScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
+  const insets = useSafeAreaInsets();
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress] = useState(new Animated.Value(0));
 
@@ -315,8 +316,17 @@ export default function ScanScreen() {
   }
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.background,
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
+      ]}
     >
       <Animated.View 
         style={[
@@ -480,7 +490,7 @@ export default function ScanScreen() {
         </View>
       </ScrollView>
       </Animated.View>
-    </SafeAreaView>
+    </View>
   );
 }
 
