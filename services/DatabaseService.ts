@@ -191,12 +191,21 @@ export class DatabaseService {
         // Migration logic for different versions
         if (currentVersion < 3) {
           // Add slug and shareUrl columns to split_bills table
-          await this.db.execAsync(`
-            ALTER TABLE split_bills ADD COLUMN slug TEXT;
-          `);
-          await this.db.execAsync(`
-            ALTER TABLE split_bills ADD COLUMN shareUrl TEXT;
-          `);
+          // Check if columns exist first to avoid duplicate column errors
+          try {
+            await this.db.execAsync(`
+              ALTER TABLE split_bills ADD COLUMN slug TEXT;
+            `);
+          } catch {
+            // Column already exists, ignore error
+          }
+          try {
+            await this.db.execAsync(`
+              ALTER TABLE split_bills ADD COLUMN shareUrl TEXT;
+            `);
+          } catch {
+            // Column already exists, ignore error
+          }
         }
 
         await this.db.execAsync(`PRAGMA user_version = ${this.DB_VERSION}`);
