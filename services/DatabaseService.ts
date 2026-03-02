@@ -1,11 +1,11 @@
 import * as SQLite from "expo-sqlite";
-import { Friend, Splitted } from "../types";
+import { CurrencyCode, Friend, Splitted } from "../types";
 
 export class DatabaseService {
   private static db: SQLite.SQLiteDatabase | null = null;
   private static isInitialized: boolean = false;
   private static initializationPromise: Promise<void> | null = null;
-  private static readonly DB_VERSION = 3; // Increment when schema changes
+  private static readonly DB_VERSION = 4; // Increment when schema changes
 
   // Initialize database
   static async initializeDatabase(): Promise<void> {
@@ -96,6 +96,13 @@ export class DatabaseService {
         name TEXT NOT NULL,
         slug TEXT,
         shareUrl TEXT,
+        bankName TEXT,
+        bankAccount TEXT,
+        bankNumber TEXT,
+        subTotal REAL,
+        grandTotal REAL,
+        currencyCode TEXT DEFAULT 'IDR',
+        groupId TEXT,
         createdAt TEXT NOT NULL
       );
     `);
@@ -125,6 +132,8 @@ export class DatabaseService {
         name TEXT NOT NULL,
         price REAL NOT NULL,
         qty INTEGER NOT NULL,
+        discount REAL DEFAULT 0,
+        discountIsPercentage INTEGER DEFAULT 0,
         createdAt TEXT NOT NULL,
         FOREIGN KEY (splitBillId) REFERENCES split_bills (id) ON DELETE CASCADE
       );
@@ -191,21 +200,31 @@ export class DatabaseService {
         // Migration logic for different versions
         if (currentVersion < 3) {
           // Add slug and shareUrl columns to split_bills table
-          // Check if columns exist first to avoid duplicate column errors
           try {
-            await this.db.execAsync(`
-              ALTER TABLE split_bills ADD COLUMN slug TEXT;
-            `);
-          } catch {
-            // Column already exists, ignore error
-          }
+            await this.db.execAsync(`ALTER TABLE split_bills ADD COLUMN slug TEXT;`);
+          } catch { /* Column already exists */ }
           try {
-            await this.db.execAsync(`
-              ALTER TABLE split_bills ADD COLUMN shareUrl TEXT;
-            `);
-          } catch {
-            // Column already exists, ignore error
+            await this.db.execAsync(`ALTER TABLE split_bills ADD COLUMN shareUrl TEXT;`);
+          } catch { /* Column already exists */ }
+        }
+
+        if (currentVersion < 4) {
+          // Add bank, currency, and total columns to split_bills
+          const splitBillColumns = [
+            "ALTER TABLE split_bills ADD COLUMN bankName TEXT",
+            "ALTER TABLE split_bills ADD COLUMN bankAccount TEXT",
+            "ALTER TABLE split_bills ADD COLUMN bankNumber TEXT",
+            "ALTER TABLE split_bills ADD COLUMN subTotal REAL",
+            "ALTER TABLE split_bills ADD COLUMN grandTotal REAL",
+            "ALTER TABLE split_bills ADD COLUMN currencyCode TEXT DEFAULT 'IDR'",
+            "ALTER TABLE split_bills ADD COLUMN groupId TEXT",
+          ];
+          for (const sql of splitBillColumns) {
+            try { await this.db.execAsync(sql); } catch { /* Column already exists */ }
           }
+          // Add discount columns to split_bill_items
+          try { await this.db.execAsync("ALTER TABLE split_bill_items ADD COLUMN discount REAL DEFAULT 0"); } catch { /* exists */ }
+          try { await this.db.execAsync("ALTER TABLE split_bill_items ADD COLUMN discountIsPercentage INTEGER DEFAULT 0"); } catch { /* exists */ }
         }
 
         await this.db.execAsync(`PRAGMA user_version = ${this.DB_VERSION}`);
@@ -464,6 +483,13 @@ export class DatabaseService {
         name: (bill as any).name,
         slug: (bill as any).slug,
         shareUrl: (bill as any).shareUrl,
+        bankName: (bill as any).bankName || undefined,
+        bankAccount: (bill as any).bankAccount || undefined,
+        bankNumber: (bill as any).bankNumber || undefined,
+        subTotal: (bill as any).subTotal || undefined,
+        grandTotal: (bill as any).grandTotal || undefined,
+        currencyCode: (bill as any).currencyCode || undefined,
+        groupId: (bill as any).groupId || undefined,
         createdAt: new Date((bill as any).createdAt),
         friends: friendsWithDetails,
       });
@@ -584,14 +610,18 @@ export class DatabaseService {
 
     const createdAtStr = splitData.createdAt.toISOString();
 
-    // Insert split bill with share info
+    // Insert split bill with share info and bank info
     await this.db.runAsync(
-      "INSERT OR REPLACE INTO split_bills (id, name, slug, shareUrl, createdAt) VALUES (?, ?, ?, ?, ?)",
+      "INSERT OR REPLACE INTO split_bills (id, name, slug, shareUrl, bankName, bankAccount, bankNumber, currencyCode, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         splitData.id,
         splitData.name,
         shareInfo?.slug || null,
         shareInfo?.shareUrl || null,
+        bankInfo?.bankName || null,
+        bankInfo?.accountName || null,
+        bankInfo?.accountNumber || null,
+        (splitData as any).currencyCode || "IDR",
         createdAtStr,
       ]
     );
@@ -620,6 +650,13 @@ export class DatabaseService {
       }
     }
 
+    // Calculate totalItemsValue and participantCount once (used in multiple places)
+    const totalItemsValue = splitData.items.reduce(
+      (sum: number, item: any) => sum + item.price * item.qty,
+      0
+    );
+    const participantCount = participants.length;
+
     // Save other payments
     for (const other of splitData.otherPayments || []) {
       await this.db.runAsync(
@@ -636,12 +673,6 @@ export class DatabaseService {
       );
 
       // Calculate and save other payment assignments
-      const totalItemsValue = splitData.items.reduce(
-        (sum: number, item: any) => sum + item.price * item.qty,
-        0
-      );
-      const participantCount = participants.length;
-
       for (const participant of participants) {
         let participantSubTotal = 0;
 
@@ -662,9 +693,15 @@ export class DatabaseService {
 
         let friendAmount = 0;
         if (other.type === "tax") {
-          friendAmount = (participantSubTotal * amount) / totalItemsValue;
+          // Prevent division by zero: if totalItemsValue is 0, tax should be 0
+          friendAmount = totalItemsValue > 0 
+            ? (participantSubTotal * amount) / totalItemsValue 
+            : 0;
         } else {
-          friendAmount = amount / participantCount;
+          // Prevent division by zero: if participantCount is 0, amount should be 0
+          friendAmount = participantCount > 0 
+            ? amount / participantCount 
+            : 0;
           if (other.type === "discount") {
             friendAmount = -friendAmount;
           }
@@ -694,12 +731,6 @@ export class DatabaseService {
       });
 
       // Calculate other payments total for this participant
-      const totalItemsValue = splitData.items.reduce(
-        (sum: number, item: any) => sum + item.price * item.qty,
-        0
-      );
-      const participantCount = participants.length;
-
       splitData.otherPayments?.forEach((other: any) => {
         let amount = other.amount;
         if (other.usePercentage) {
@@ -708,9 +739,15 @@ export class DatabaseService {
 
         let friendAmount = 0;
         if (other.type === "tax") {
-          friendAmount = (subTotal * amount) / totalItemsValue;
+          // Prevent division by zero: if totalItemsValue is 0, tax should be 0
+          friendAmount = totalItemsValue > 0 
+            ? (subTotal * amount) / totalItemsValue 
+            : 0;
         } else {
-          friendAmount = amount / participantCount;
+          // Prevent division by zero: if participantCount is 0, amount should be 0
+          friendAmount = participantCount > 0 
+            ? amount / participantCount 
+            : 0;
           if (other.type === "discount") {
             friendAmount = -friendAmount;
           }
@@ -741,13 +778,46 @@ export class DatabaseService {
   }
 
   // Utility methods
-  static formatCurrency(amount: number): string {
-    return new Intl.NumberFormat("id-ID", {
+  private static readonly LOCALE_MAP: Record<CurrencyCode, string> = {
+    IDR: "id-ID", JPY: "ja-JP", CNY: "zh-CN", KRW: "ko-KR",
+    USD: "en-US", SGD: "en-SG", MYR: "ms-MY", THB: "th-TH",
+    PHP: "en-PH", VND: "vi-VN", MMK: "my-MM", BND: "ms-BN",
+    KHR: "km-KH", LAK: "lo-LA",
+  };
+
+  private static readonly DECIMALS_MAP: Record<CurrencyCode, number> = {
+    IDR: 0, JPY: 0, KRW: 0, VND: 0, MMK: 0, KHR: 0, LAK: 0,
+    CNY: 2, USD: 2, SGD: 2, MYR: 2, THB: 2, PHP: 2, BND: 2,
+  };
+
+  static formatCurrency(amount: number, currencyCode: CurrencyCode = "IDR"): string {
+    const locale = this.LOCALE_MAP[currencyCode] || "id-ID";
+    const decimals = this.DECIMALS_MAP[currencyCode] ?? 0;
+    return new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      currency: currencyCode,
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
     }).format(amount);
+  }
+
+  static getCurrencyList(): { code: CurrencyCode; label: string }[] {
+    return [
+      { code: "IDR", label: "Indonesian Rupiah" },
+      { code: "USD", label: "US Dollar" },
+      { code: "SGD", label: "Singapore Dollar" },
+      { code: "MYR", label: "Malaysian Ringgit" },
+      { code: "JPY", label: "Japanese Yen" },
+      { code: "KRW", label: "South Korean Won" },
+      { code: "CNY", label: "Chinese Yuan" },
+      { code: "THB", label: "Thai Baht" },
+      { code: "PHP", label: "Philippine Peso" },
+      { code: "VND", label: "Vietnamese Dong" },
+      { code: "MMK", label: "Myanmar Kyat" },
+      { code: "BND", label: "Brunei Dollar" },
+      { code: "KHR", label: "Cambodian Riel" },
+      { code: "LAK", label: "Lao Kip" },
+    ];
   }
 
   static formatDate(date: Date): string {
@@ -760,7 +830,10 @@ export class DatabaseService {
   }
 
   static getRandomAccentColor(): string {
-    const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7"];
+    const colors = [
+      "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
+      "#DDA0DD", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E9",
+    ];
     return colors[Math.floor(Math.random() * colors.length)];
   }
 }

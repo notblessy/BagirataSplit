@@ -20,13 +20,15 @@ import {
   convertRecognitionToAppFormat,
   convertToBackendFormat,
 } from "../services/BagirataApiService";
-import { DataService } from "../services/DataService";
 import { DatabaseService } from "../services/DatabaseService";
+import { eventService, REFRESH_HISTORY } from "../services/EventService";
 import {
   AssignedFriend,
   AssignedItem,
+  CurrencyCode,
   Friend,
   OtherItem,
+  PaymentType,
   SplitItem,
 } from "../types";
 import { useInterstitialAd } from "./InterstitialAdManager";
@@ -78,10 +80,11 @@ export function UnifiedSplitScreen({
 
   const [otherName, setOtherName] = useState("");
   const [otherAmount, setOtherAmount] = useState("");
-  const [otherType, setOtherType] = useState<"addition" | "discount" | "tax">(
-    "tax"
-  );
+  const [otherType, setOtherType] = useState<PaymentType>("tax");
   const [otherUsePercentage, setOtherUsePercentage] = useState(false);
+
+  // Currency state
+  const [currencyCode, setCurrencyCode] = useState<CurrencyCode>("IDR");
 
   // Bank info states
   const [bankName, setBankName] = useState("");
@@ -142,7 +145,7 @@ export function UnifiedSplitScreen({
     addOtherSheetRef.current?.hide();
     setOtherName("");
     setOtherAmount("");
-    setOtherType("tax");
+    setOtherType("tax" as PaymentType);
     setOtherUsePercentage(false);
   };
 
@@ -246,6 +249,7 @@ export function UnifiedSplitScreen({
               id: `${response.data.id}-other-${index}`,
               createdAt: new Date(),
             })),
+            currency: currencyCode,
             createdAt: new Date(response.data.createdAt),
           };
 
@@ -278,7 +282,7 @@ export function UnifiedSplitScreen({
     // Load friends data
     const loadFriends = async () => {
       try {
-        const friendsData = await DataService.getAllFriends();
+        const friendsData = await DatabaseService.getAllFriends();
         setFriends(friendsData);
 
         // Leave participants empty initially - user can choose who to include
@@ -408,6 +412,7 @@ export function UnifiedSplitScreen({
             })),
           items: items,
           otherPayments: [],
+          currency: currencyCode,
           createdAt: new Date(),
         };
 
@@ -435,11 +440,9 @@ export function UnifiedSplitScreen({
       // Show interstitial ad before proceeding to share screen
       showInterstitialAd()
         .then(() => {
-          // Ad was shown successfully or no ad was available, proceed to share screen
           animateStepTransition(() => setCurrentStep("share"));
         })
         .catch((error) => {
-          // Ad failed to show, but continue to share screen anyway
           console.log('Interstitial ad failed to show, continuing to share screen:', error);
           animateStepTransition(() => setCurrentStep("share"));
         });
@@ -511,6 +514,9 @@ export function UnifiedSplitScreen({
           console.warn("Failed to save to SQLite history:", sqliteError);
           // Don't fail the whole operation if SQLite fails
         }
+
+        // Notify other screens to refresh
+        eventService.emit(REFRESH_HISTORY);
 
         // Success! Call the onShare callback with the share URL
         onShare({
@@ -590,14 +596,14 @@ export function UnifiedSplitScreen({
 
   const addNewFriend = async (name: string) => {
     try {
-      const newFriend = await DataService.addFriend({
+      const newFriend = await DatabaseService.addFriend({
         name: name.trim(),
         accentColor: "#007AFF",
         me: false,
       });
 
       // Refresh friends list
-      const friendsData = await DataService.getAllFriends();
+      const friendsData = await DatabaseService.getAllFriends();
       setFriends(friendsData);
 
       // Add to participants
@@ -657,6 +663,8 @@ export function UnifiedSplitScreen({
       price,
       equal: false,
       friends: [],
+      discount: 0,
+      discountIsPercentage: false,
       createdAt: new Date(),
     };
 
@@ -770,6 +778,7 @@ export function UnifiedSplitScreen({
           })),
         items: items,
         otherPayments: [newOther],
+        currency: currencyCode,
         createdAt: new Date(),
       };
       setCurrentSplitData(tempSplitData);
@@ -777,7 +786,7 @@ export function UnifiedSplitScreen({
 
     setOtherName("");
     setOtherAmount("");
-    setOtherType("tax");
+    setOtherType("tax" as PaymentType);
     setOtherUsePercentage(false);
     closeAddOtherSheet();
   };
@@ -960,7 +969,7 @@ export function UnifiedSplitScreen({
             amount = (itemsTotal * other.amount) / 100;
           }
 
-          if (other.type === "discount") {
+          if (other.type === "discount" || other.type === "deduction") {
             return sum - amount;
           } else {
             return sum + amount;
@@ -1010,9 +1019,9 @@ export function UnifiedSplitScreen({
           const taxAmount = (itemsTotal * amount) / totalItemsValue;
           return total + taxAmount;
         } else {
-          // Additions and discounts are split equally among participants
+          // Additions, discounts, and deductions are split equally among participants
           const perParticipantAmount = amount / participantCount;
-          if (other.type === "discount") {
+          if (other.type === "discount" || other.type === "deduction") {
             return total - perParticipantAmount;
           } else {
             return total + perParticipantAmount;
@@ -1173,6 +1182,45 @@ export function UnifiedSplitScreen({
               />
             </View>
 
+            {/* Currency Selector */}
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                Currency
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.currencyScroll}>
+                {DatabaseService.getCurrencyList().map((c) => (
+                  <TouchableOpacity
+                    key={c.code}
+                    style={[
+                      styles.currencyChip,
+                      {
+                        backgroundColor:
+                          currencyCode === c.code ? colors.tint : "transparent",
+                        borderColor:
+                          currencyCode === c.code ? colors.tint : colors.text + "30",
+                      },
+                    ]}
+                    onPress={() => {
+                      setCurrencyCode(c.code);
+                      if (currentSplitData) {
+                        setCurrentSplitData({ ...currentSplitData, currency: c.code });
+                      }
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: currencyCode === c.code ? "#fff" : colors.text,
+                        fontSize: 13,
+                        fontWeight: currencyCode === c.code ? "600" : "400",
+                      }}
+                    >
+                      {c.code}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
             {/* Participants Section */}
             <View style={styles.section}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>
@@ -1289,8 +1337,8 @@ export function UnifiedSplitScreen({
                     </View>
                   </View>
                   <Text style={[styles.itemPrice, { color: colors.text }]}>
-                    {DataService.formatCurrency(item.price)} × {item.qty} ={" "}
-                    {DataService.formatCurrency(item.price * item.qty)}
+                    {DatabaseService.formatCurrency(item.price)} × {item.qty} ={" "}
+                    {DatabaseService.formatCurrency(item.price * item.qty)}
                   </Text>
                 </View>
               ))}
@@ -1339,7 +1387,7 @@ export function UnifiedSplitScreen({
                   <Text style={[styles.otherAmount, { color: colors.text }]}>
                     {other.usePercentage
                       ? `${other.amount}%`
-                      : DataService.formatCurrency(other.amount)}
+                      : DatabaseService.formatCurrency(other.amount)}
                   </Text>
                 </View>
               ))}
@@ -1367,7 +1415,7 @@ export function UnifiedSplitScreen({
                   Total Amount
                 </Text>
                 <Text style={[styles.totalAmount, { color: colors.tint }]}>
-                  {DataService.formatCurrency(calculateTotal())}
+                  {DatabaseService.formatCurrency(calculateTotal())}
                 </Text>
               </View>
             </View>
@@ -1453,7 +1501,7 @@ export function UnifiedSplitScreen({
                         {item.name}
                       </Text>
                       <Text style={[styles.itemPrice, { color: colors.text }]}>
-                        {DataService.formatCurrency(item.price)} × {item.qty}
+                        {DatabaseService.formatCurrency(item.price)} × {item.qty}
                       </Text>
                     </View>
                     <TouchableOpacity
@@ -1538,7 +1586,7 @@ export function UnifiedSplitScreen({
                         <Text
                           style={[styles.friendTotal, { color: colors.tint }]}
                         >
-                          {DataService.formatCurrency(total)}
+                          {DatabaseService.formatCurrency(total)}
                         </Text>
                       </View>
                     </View>
@@ -1573,7 +1621,7 @@ export function UnifiedSplitScreen({
                   {currentSplitData?.createdAt.toLocaleDateString()}
                 </Text>
                 <Text style={[styles.summaryTotal, { color: colors.tint }]}>
-                  Total: {DataService.formatCurrency(calculateTotal())}
+                  Total: {DatabaseService.formatCurrency(calculateTotal())}
                 </Text>
               </View>
 
@@ -1635,7 +1683,7 @@ export function UnifiedSplitScreen({
                                 { color: colors.text },
                               ]}
                             >
-                              Subtotal: {DataService.formatCurrency(itemsTotal)}
+                              Subtotal: {DatabaseService.formatCurrency(itemsTotal)}
                             </Text>
                           </View>
                         </View>
@@ -1651,7 +1699,7 @@ export function UnifiedSplitScreen({
                               { color: colors.tint },
                             ]}
                           >
-                            {DataService.formatCurrency(totalWithOtherPayments)}
+                            {DatabaseService.formatCurrency(totalWithOtherPayments)}
                           </Text>
                         </View>
                       </View>
@@ -1686,7 +1734,7 @@ export function UnifiedSplitScreen({
                                 ]}
                               >
                                 • {item.name} ({friendAssignment.qty}x) -{" "}
-                                {DataService.formatCurrency(
+                                {DatabaseService.formatCurrency(
                                   item.price * friendAssignment.qty
                                 )}
                               </Text>
@@ -1718,16 +1766,16 @@ export function UnifiedSplitScreen({
                                   friendAmount =
                                     (itemsTotal * amount) / totalItemsValue;
                                 } else {
-                                  // Additions and discounts are split equally among participants
+                                  // Additions, discounts, and deductions are split equally among participants
                                   friendAmount = amount / participantCount;
-                                  if (other.type === "discount") {
+                                  if (other.type === "discount" || other.type === "deduction") {
                                     friendAmount = -friendAmount;
                                   }
                                 }
 
                                 const displayAmount = other.usePercentage
                                   ? `${other.amount}%`
-                                  : DataService.formatCurrency(amount);
+                                  : DatabaseService.formatCurrency(amount);
 
                                 return (
                                   <Text
@@ -1739,7 +1787,7 @@ export function UnifiedSplitScreen({
                                   >
                                     • {other.name} ({displayAmount}) -{" "}
                                     {friendAmount >= 0 ? "+" : ""}
-                                    {DataService.formatCurrency(friendAmount)}
+                                    {DatabaseService.formatCurrency(friendAmount)}
                                   </Text>
                                 );
                               })}
@@ -1761,7 +1809,7 @@ export function UnifiedSplitScreen({
                                 ]}
                               >
                                 Items Subtotal:{" "}
-                                {DataService.formatCurrency(itemsTotal)}
+                                {DatabaseService.formatCurrency(itemsTotal)}
                               </Text>
                               <Text
                                 style={[
@@ -1770,7 +1818,7 @@ export function UnifiedSplitScreen({
                                 ]}
                               >
                                 Final Total:{" "}
-                                {DataService.formatCurrency(
+                                {DatabaseService.formatCurrency(
                                   totalWithOtherPayments
                                 )}
                               </Text>
@@ -2037,7 +2085,7 @@ export function UnifiedSplitScreen({
               />
 
               <View style={styles.typeSelector}>
-                {(["tax", "addition", "discount"] as const).map((type) => (
+                {(["tax", "addition", "discount", "deduction"] as const).map((type) => (
                   <TouchableOpacity
                     key={type}
                     style={[
@@ -2198,6 +2246,8 @@ export function UnifiedSplitScreen({
                   ? otherUsePercentage
                     ? "Tax will be calculated proportionally based on each person's share of items"
                     : "Tax amount will be split proportionally based on each person's share of items"
+                  : otherType === "deduction"
+                  ? "Deduction will be subtracted equally from each participant's total"
                   : otherUsePercentage
                   ? "This amount will be calculated from total items value and split equally among all participants"
                   : "This amount will be split equally among all participants"}
@@ -2755,14 +2805,11 @@ export function UnifiedSplitScreen({
             },
           ]}
         >
-          <SafeAreaView
-            style={[
-              styles.modalContainer,
-              {
-                backgroundColor: colors.background,
-                maxHeight: 450,
-              },
-            ]}
+          <View
+            style={{
+              backgroundColor: colors.background,
+              maxHeight: 450,
+            }}
           >
             <View
               style={[
@@ -2889,7 +2936,7 @@ export function UnifiedSplitScreen({
                   )}
               </View>
             </ScrollView>
-          </SafeAreaView>
+          </View>
         </View>
       </ActionSheet>
     </SafeAreaView>
@@ -3205,22 +3252,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
   },
+  currencyScroll: {
+    flexDirection: "row",
+  },
+  currencyChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginRight: 8,
+  },
   typeSelector: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 8,
     marginBottom: 16,
   },
   typeOption: {
-    flex: 1,
-    height: 48,
+    paddingHorizontal: 16,
+    height: 40,
     borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    marginRight: 8,
   },
   typeText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "500",
   },
   percentageToggle: {

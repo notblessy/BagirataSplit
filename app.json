@@ -2,13 +2,13 @@
   "expo": {
     "name": "Bagirata",
     "slug": "Bagirata",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "bagirata",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "runtimeVersion": "1.0.1",
+    "runtimeVersion": "1.0.3",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "keepgoing.Bagirata",
@@ -658,7 +658,8 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

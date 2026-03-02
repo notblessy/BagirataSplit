@@ -1,148 +1,135 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
-  Modal,
+  Linking,
+  Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import HistoryDetailPage from "../../components/HistoryDetailPage";
-import ProfileSheet from "../../components/ProfileSheet";
-import { ThemedText } from "../../components/ThemedText";
-import { ThemedView } from "../../components/ThemedView";
-import { Colors } from "../../constants/Colors";
+import { BagirataColors, Colors } from "../../constants/Colors";
+import { useAuth } from "../../contexts/AuthContext";
 import { useUserProfile } from "../../contexts/UserProfileContext";
 import { useColorScheme } from "../../hooks/useColorScheme";
+import { BagirataApiService } from "../../services/BagirataApiService";
 import { DatabaseService } from "../../services/DatabaseService";
-import { Friend, Splitted } from "../../types";
-export default function HistoryScreen() {
+import { eventService, REFRESH_HISTORY } from "../../services/EventService";
+import { ScannerService } from "../../services/ScannerService";
+import { BagirataSummary, Splitted } from "../../types";
+import InlineAd from "../../components/InlineAd";
+
+export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const insets = useSafeAreaInsets();
-  const {
-    userProfile,
-    refreshUserProfile,
-    updateUserProfile,
-    needsProfileSetup,
-  } = useUserProfile();
+  const { isAuthenticated, isLoading: isAuthLoading, currentUser } = useAuth();
+  const { userProfile } = useUserProfile();
 
-  const [allSplittedBills, setAllSplittedBills] = useState<Splitted[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [displayCount, setDisplayCount] = useState(5);
-  const [showProfileSheet, setShowProfileSheet] = useState(false);
+  const [recentSplits, setRecentSplits] = useState<Splitted[]>([]);
+  const [apiSplits, setApiSplits] = useState<BagirataSummary[]>([]);
+  const [isScanning, setIsScanning] = useState(false);
   const [selectedSplit, setSelectedSplit] = useState<Splitted | null>(null);
   const [showDetailPage, setShowDetailPage] = useState(false);
 
-  // Function to reload splits data
-  const reloadSplits = async () => {
+  const displayName =
+    currentUser?.name || userProfile?.name || "there";
+
+  const loadRecentSplits = useCallback(async () => {
+    if (isAuthLoading) return;
     try {
-      const bills = await DatabaseService.getAllSplittedBills();
-      setAllSplittedBills(bills);
+      if (isAuthenticated) {
+        const response = await BagirataApiService.getHistory(1, 4);
+        if (response.success && response.data) {
+          setApiSplits(response.data);
+        }
+      } else {
+        await DatabaseService.initializeDatabase();
+        const bills = await DatabaseService.getAllSplittedBills();
+        setRecentSplits(bills.slice(0, 4));
+      }
     } catch (error) {
-      console.error("Error reloading splits:", error);
+      console.error("Error loading recent splits:", error);
+    }
+  }, [isAuthenticated, isAuthLoading]);
+
+  useEffect(() => {
+    loadRecentSplits();
+  }, [loadRecentSplits]);
+
+  // Listen for refresh events
+  useEffect(() => {
+    const unsubscribe = eventService.on(REFRESH_HISTORY, loadRecentSplits);
+    return unsubscribe;
+  }, [loadRecentSplits]);
+
+  const handleScanReceipt = async () => {
+    setIsScanning(true);
+    try {
+      const isAvailable = await ScannerService.isAvailable();
+      if (!isAvailable) {
+        Alert.alert(
+          "Scanner Unavailable",
+          "Document scanner is not available on this device."
+        );
+        return;
+      }
+
+      const scanResult = await ScannerService.scanDocumentWithOCR();
+      if (scanResult.success && scanResult.text) {
+        router.push({
+          pathname: "/result-flow",
+          params: { scannedText: scanResult.text },
+        });
+      } else if (scanResult.message) {
+        Alert.alert("Scan Failed", scanResult.message);
+      }
+    } catch (error: any) {
+      console.error("Scan error:", error);
+      if (
+        error.message?.includes("camera") ||
+        error.message?.includes("Camera") ||
+        error.message?.includes("permission")
+      ) {
+        Alert.alert(
+          "Camera Permission Required",
+          Platform.OS === "ios"
+            ? "Please enable camera access in Settings > Privacy & Security > Camera"
+            : "Please enable camera access in Settings > Apps > Bagirata > Permissions",
+          [
+            { text: "Cancel" },
+            { text: "Open Settings", onPress: () => Linking.openSettings() },
+          ]
+        );
+      } else {
+        Alert.alert("Scan Error", "An error occurred while scanning.");
+      }
+    } finally {
+      setIsScanning(false);
     }
   };
 
-  // Initialize database and load data
-  useEffect(() => {
-    const initializeData = async () => {
-      try {
-        await DatabaseService.initializeDatabase();
-        const bills = await DatabaseService.getAllSplittedBills();
-        await refreshUserProfile();
-
-        setAllSplittedBills(bills);
-
-        // Show profile sheet only if user needs profile setup
-        if (needsProfileSetup) {
-          setShowProfileSheet(true);
-        }
-      } catch (error) {
-        console.error("Error loading data:", error);
-        Alert.alert("Error", "Failed to load data. Please try again.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    initializeData();
-  }, [userProfile, refreshUserProfile, needsProfileSetup]);
-
-  const formatCurrency = (amount: number) => {
-    return DatabaseService.formatCurrency(amount);
+  const handleManualEntry = () => {
+    router.push({
+      pathname: "/result-flow",
+      params: { isManualEntry: "true" },
+    });
   };
 
   const handleSplitPress = (split: Splitted) => {
     setSelectedSplit(split);
     setShowDetailPage(true);
   };
+
   const getTotalAmount = (split: Splitted): number => {
     return split.friends.reduce((sum, friend) => sum + (friend.total || 0), 0);
   };
 
-  const displayedBills = allSplittedBills.slice(0, displayCount);
-  const hasMoreBills = displayCount < allSplittedBills.length;
-
-  const loadMoreBills = () => {
-    setDisplayCount((prev) => Math.min(prev + 5, allSplittedBills.length));
-  };
-  const renderAvatarGroup = (friends: any[]) => {
-    const maxShow = 2;
-    const friendsToShow = friends.slice(0, maxShow);
-    const remainingCount = friends.length - maxShow;
-    return (
-      <View style={styles.avatarGroup}>
-        {friendsToShow.map((friend, index) => (
-          <View
-            key={friend.id}
-            style={[
-              styles.avatar,
-              {
-                backgroundColor: friend.accentColor,
-                marginLeft: index > 0 ? -8 : 0,
-                zIndex: maxShow - index,
-                borderColor: colorScheme === "dark" ? "#2c2c2e" : "#fff",
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.avatarText,
-                { color: colorScheme === "dark" ? "#fff" : "#fff" },
-              ]}
-            >
-              {friend.name.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        ))}
-        {remainingCount > 0 && (
-          <View
-            style={[
-              styles.avatar,
-              styles.remainingAvatar,
-              {
-                borderColor: colorScheme === "dark" ? "#2c2c2e" : "#fff",
-                backgroundColor: colorScheme === "dark" ? "#3A3A3C" : "#ccc",
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.remainingText,
-                { color: colorScheme === "dark" ? "#fff" : "#666" },
-              ]}
-            >
-              +{remainingCount}
-            </Text>
-          </View>
-        )}
-      </View>
-    );
-  };
   return (
     <View
       style={[
@@ -150,7 +137,6 @@ export default function HistoryScreen() {
         {
           backgroundColor: colors.background,
           paddingTop: insets.top,
-          paddingBottom: insets.bottom,
           paddingLeft: insets.left,
           paddingRight: insets.right,
         },
@@ -159,200 +145,233 @@ export default function HistoryScreen() {
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
       >
         {/* Header */}
-        <ThemedView style={styles.header}>
-          <View style={styles.headerContent}>
-            <View style={styles.headerText}>
-              <ThemedText type="title" style={styles.title}>
-                Split Bill History
-              </ThemedText>
-              <ThemedText type="default" style={styles.subtitle}>
-                Manage and view your split bill history
-              </ThemedText>
-            </View>
-            <TouchableOpacity
-              style={[
-                styles.profileButton,
-                {
-                  backgroundColor:
-                    colorScheme === "dark" ? "#3A3A3C" : colors.tint,
-                },
-              ]}
-              onPress={() => setShowProfileSheet(true)}
-            >
-              {userProfile?.name ? (
-                <Text
-                  style={[
-                    styles.profileButtonText,
-                    { color: colorScheme === "dark" ? "#fff" : "#fff" },
-                  ]}
-                >
-                  {userProfile.name.charAt(0).toUpperCase()}
-                </Text>
-              ) : (
-                <Ionicons
-                  name="person-outline"
-                  size={20}
-                  color={colorScheme === "dark" ? "#fff" : "#fff"}
-                />
-              )}
-            </TouchableOpacity>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Text style={[styles.greeting, { color: colors.text }]}>
+              Hello, {displayName}
+            </Text>
+            <Text style={[styles.subtitle, { color: BagirataColors.secondaryText }]}>
+              Split bills easily
+            </Text>
           </View>
-        </ThemedView>
-        {/* Split Bills List */}
-        <ThemedView style={styles.section}>
-          {isLoading ? (
-            <ThemedView style={styles.emptyState}>
-              <Ionicons
-                name="refresh-outline"
-                size={48}
-                color={colors.icon}
-                style={styles.emptyIcon}
-              />
-              <ThemedText style={styles.emptyTitle}>
-                Loading split bills...
-              </ThemedText>
-            </ThemedView>
-          ) : allSplittedBills.length === 0 ? (
-            <ThemedView style={styles.emptyState}>
-              <Ionicons
-                name="document-text-outline"
-                size={48}
-                color={colors.icon}
-                style={styles.emptyIcon}
-              />
-              <ThemedText style={styles.emptyTitle}>
-                No split bills yet
-              </ThemedText>
-              <ThemedText style={styles.emptySubtitle}>
-                Start by scanning a receipt to create your first split bill
-              </ThemedText>
-            </ThemedView>
-          ) : (
-            <>
-              {displayedBills.map((split: Splitted) => (
-                <TouchableOpacity
-                  key={split.id}
-                  style={[
-                    styles.splitCard,
-                    {
-                      backgroundColor:
-                        colorScheme === "dark" ? "#262626" : "#f8f9fa",
-                    },
-                  ]}
-                  onPress={() => handleSplitPress(split)}
-                >
-                  {/* Card Header */}
-                  <View style={styles.splitHeader}>
-                    <View style={styles.splitHeaderLeft}>
+          <Pressable
+            style={[styles.profileButton, { backgroundColor: BagirataColors.primary }]}
+            onPress={() => {
+              if (isAuthenticated) {
+                router.push("/(tabs)/profile");
+              } else {
+                router.push("/login");
+              }
+            }}
+          >
+            {currentUser?.name || userProfile?.name ? (
+              <Text style={styles.profileButtonText}>
+                {(currentUser?.name || userProfile?.name || "U")
+                  .charAt(0)
+                  .toUpperCase()}
+              </Text>
+            ) : (
+              <Ionicons name="person-outline" size={20} color="#fff" />
+            )}
+          </Pressable>
+        </View>
+
+        {/* Create Bagirata Card */}
+        <View
+          style={[
+            styles.createCard,
+            {
+              backgroundColor: colorScheme === "dark" ? "#1E1E1E" : "#fff",
+              borderColor: colorScheme === "dark" ? "#333" : "#E5E5E5",
+            },
+          ]}
+        >
+          <Text style={[styles.createCardTitle, { color: colors.text }]}>
+            Create Bagirata
+          </Text>
+          <Text
+            style={[styles.createCardSubtitle, { color: BagirataColors.secondaryText }]}
+          >
+            Scan a receipt or enter items manually
+          </Text>
+
+          <View style={styles.createButtons}>
+            <Pressable
+              style={[styles.scanButton, isScanning && styles.buttonDisabled]}
+              onPress={handleScanReceipt}
+              disabled={isScanning}
+            >
+              <Ionicons name="camera" size={20} color="#fff" />
+              <Text style={styles.scanButtonText}>
+                {isScanning ? "Scanning..." : "Scan"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.manualButton,
+                { borderColor: BagirataColors.primary },
+              ]}
+              onPress={handleManualEntry}
+            >
+              <Ionicons name="pencil" size={20} color={BagirataColors.primary} />
+              <Text style={[styles.manualButtonText, { color: BagirataColors.primary }]}>
+                Manual
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Recent Bagirata */}
+        {(isAuthenticated ? apiSplits.length > 0 : recentSplits.length > 0) && (
+          <View style={styles.recentSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                Recent Bagirata
+              </Text>
+              <Pressable onPress={() => router.push("/(tabs)/bagirata")}>
+                <Text style={[styles.viewAllText, { color: BagirataColors.primary }]}>
+                  View All
+                </Text>
+              </Pressable>
+            </View>
+
+            {isAuthenticated
+              ? apiSplits.map((split) => (
+                  <Pressable
+                    key={split.id}
+                    style={[
+                      styles.splitCard,
+                      {
+                        backgroundColor:
+                          colorScheme === "dark" ? "#1E1E1E" : "#fff",
+                        borderColor:
+                          colorScheme === "dark" ? "#333" : "#E5E5E5",
+                      },
+                    ]}
+                    onPress={() => {
+                      // Navigate to bagirata tab for full detail
+                      router.push("/(tabs)/bagirata");
+                    }}
+                  >
+                    <View style={styles.splitCardLeft}>
                       <View
                         style={[
                           styles.splitIcon,
                           {
                             backgroundColor:
-                              colorScheme === "dark" ? "#3A3A3C" : "#f0f0f0",
+                              colorScheme === "dark" ? "#2A2A2A" : BagirataColors.dimmedLight,
                           },
                         ]}
                       >
                         <Ionicons
-                          name="receipt-outline"
-                          size={24}
-                          color={colors.tint}
+                          name="document-text-outline"
+                          size={20}
+                          color={BagirataColors.primary}
                         />
                       </View>
                       <View style={styles.splitInfo}>
-                        <ThemedText
-                          type="defaultSemiBold"
-                          style={styles.splitName}
+                        <Text
+                          style={[styles.splitName, { color: colors.text }]}
+                          numberOfLines={1}
                         >
                           {split.name}
-                        </ThemedText>
-                        <ThemedText style={styles.splitDate}>
-                          {DatabaseService.formatDate(split.createdAt)}
-                        </ThemedText>
+                        </Text>
+                        <Text style={[styles.splitDate, { color: BagirataColors.secondaryText }]}>
+                          {new Date(split.createdAt).toLocaleDateString()} &middot;{" "}
+                          {split.friendCount} friends
+                        </Text>
                       </View>
                     </View>
-                  </View>
-
-                  {/* Card Body */}
-                  <View style={styles.splitBody}>
-                    <View style={styles.splitAmount}>
-                      {renderAvatarGroup(split.friends)}
-                    </View>
-                    <View style={styles.splitAmount}>
-                      <ThemedText style={styles.totalLabel}>Total</ThemedText>
-                      <ThemedText
-                        style={[styles.totalAmount, { color: colors.text }]}
-                      >
-                        {formatCurrency(getTotalAmount(split))}
-                      </ThemedText>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
-
-              {/* Load More Button */}
-              {hasMoreBills && (
-                <TouchableOpacity
-                  style={[
-                    styles.loadMoreButton,
-                    {
-                      backgroundColor:
-                        colorScheme === "dark" ? "#3A3A3C" : "#E5E5E5",
-                    },
-                  ]}
-                  onPress={loadMoreBills}
-                >
-                  <ThemedText
+                    <Text style={[styles.splitTotal, { color: BagirataColors.primary }]}>
+                      {DatabaseService.formatCurrency(
+                        split.grandTotal,
+                        (split.currencyCode as any) || "IDR"
+                      )}
+                    </Text>
+                  </Pressable>
+                ))
+              : recentSplits.map((split) => (
+                  <Pressable
+                    key={split.id}
                     style={[
-                      styles.loadMoreText,
-                      { color: colorScheme === "dark" ? "#fff" : "#333" },
+                      styles.splitCard,
+                      {
+                        backgroundColor:
+                          colorScheme === "dark" ? "#1E1E1E" : "#fff",
+                        borderColor:
+                          colorScheme === "dark" ? "#333" : "#E5E5E5",
+                      },
                     ]}
+                    onPress={() => handleSplitPress(split)}
                   >
-                    Load More
-                  </ThemedText>
-                </TouchableOpacity>
-              )}
-            </>
-          )}
-        </ThemedView>
-      </ScrollView>
-      {/* Profile Sheet Modal */}
-      <Modal
-        visible={showProfileSheet}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => {
-          if (userProfile) {
-            setShowProfileSheet(false);
-          }
-        }}
-      >
-        <ProfileSheet
-          onClose={() => setShowProfileSheet(false)}
-          profile={userProfile}
-          isFirstTime={!userProfile}
-          onSave={async (updatedProfile: Friend) => {
-            try {
-              const success = await updateUserProfile(updatedProfile);
-              if (success) {
-                setShowProfileSheet(false);
-              } else {
-                Alert.alert(
-                  "Error",
-                  "Failed to save profile. Please try again."
-                );
-              }
-            } catch (error) {
-              console.error("Error saving profile:", error);
-              Alert.alert("Error", "Failed to save profile. Please try again.");
-            }
-          }}
-        />
-      </Modal>
+                    <View style={styles.splitCardLeft}>
+                      <View
+                        style={[
+                          styles.splitIcon,
+                          {
+                            backgroundColor:
+                              colorScheme === "dark" ? "#2A2A2A" : BagirataColors.dimmedLight,
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="document-text-outline"
+                          size={20}
+                          color={BagirataColors.primary}
+                        />
+                      </View>
+                      <View style={styles.splitInfo}>
+                        <Text
+                          style={[styles.splitName, { color: colors.text }]}
+                          numberOfLines={1}
+                        >
+                          {split.name}
+                        </Text>
+                        <Text style={[styles.splitDate, { color: BagirataColors.secondaryText }]}>
+                          {DatabaseService.formatDate(split.createdAt)} &middot;{" "}
+                          {split.friends.length} friends
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.splitTotal, { color: BagirataColors.primary }]}>
+                      {DatabaseService.formatCurrency(
+                        getTotalAmount(split),
+                        split.currencyCode
+                      )}
+                    </Text>
+                  </Pressable>
+                ))}
+          </View>
+        )}
 
-      {/* History Detail Page Modal */}
+        {/* Ad */}
+        <InlineAd />
+
+        {(isAuthenticated ? apiSplits.length === 0 : recentSplits.length === 0) && (
+          <View style={styles.emptyState}>
+            <Ionicons
+              name="receipt-outline"
+              size={48}
+              color={BagirataColors.dimmed}
+            />
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>
+              No split bills yet
+            </Text>
+            <Text
+              style={[styles.emptySubtitle, { color: BagirataColors.secondaryText }]}
+            >
+              Create your first bagirata by scanning a receipt or entering items
+              manually
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* History Detail Modal */}
       {selectedSplit && (
         <HistoryDetailPage
           split={selectedSplit}
@@ -361,7 +380,7 @@ export default function HistoryScreen() {
             setShowDetailPage(false);
             setSelectedSplit(null);
           }}
-          onSplitDeleted={reloadSplits}
+          onSplitDeleted={loadRecentSplits}
         />
       )}
     </View>
@@ -374,169 +393,27 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollContent: {
     padding: 20,
     paddingBottom: 100,
   },
   header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 24,
   },
-  title: {
-    fontSize: 28,
+  headerLeft: {
+    flex: 1,
+  },
+  greeting: {
+    fontSize: 26,
     fontWeight: "bold",
-    marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
-    opacity: 0.7,
-  },
-  section: {
-    marginBottom: 24,
-    paddingBottom: 60,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-  },
-  emptyState: {
-    alignItems: "center",
-    padding: 40,
-  },
-  emptyIcon: {
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 8,
-  },
-  emptySubtitle: {
     fontSize: 14,
-    opacity: 0.7,
-    textAlign: "center",
-  },
-  splitCard: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    position: "relative",
-  },
-  splitHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  splitHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  splitHeaderRight: {
-    marginLeft: 12,
-  },
-  splitIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  splitBody: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
-  totalLabel: {
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  totalAmount: {
-    fontSize: 14,
-    fontWeight: "bold",
-  },
-  splitInfo: {
-    flex: 1,
-  },
-  splitName: {
-    fontSize: 16,
-  },
-  splitDate: {
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  splitAmount: {
-    alignItems: "flex-end",
-  },
-  myAmount: {
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  myLabel: {
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  splitDetails: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  avatarGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-  },
-  avatarText: {
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  remainingAvatar: {
-    marginLeft: -8,
-  },
-  remainingText: {
-    fontSize: 10,
-    fontWeight: "bold",
-  },
-  splitStats: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginLeft: 8,
-  },
-  friendCount: {
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  headerContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  headerText: {
-    flex: 1,
+    marginTop: 4,
   },
   profileButton: {
     width: 40,
@@ -549,60 +426,128 @@ const styles = StyleSheet.create({
   profileButtonText: {
     fontSize: 16,
     fontWeight: "bold",
+    color: "#fff",
   },
-  loadMoreButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 16,
-    gap: 8,
-    alignSelf: "center",
-    paddingHorizontal: 24,
-    marginBottom: 60,
-  },
-  loadMoreText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  devToggle: {
-    padding: 8,
-  },
-  devPanel: {
-    marginHorizontal: 20,
-    marginBottom: 20,
-    padding: 16,
+  createCard: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
     borderWidth: 1,
-    borderRadius: 12,
-    backgroundColor: "#f0f8ff",
   },
-  devPanelTitle: {
-    fontSize: 16,
+  createCardTitle: {
+    fontSize: 18,
     fontWeight: "600",
-    marginBottom: 12,
-    color: "#333",
+    marginBottom: 4,
   },
-  devButtonsContainer: {
+  createCardSubtitle: {
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  createButtons: {
     flexDirection: "row",
     gap: 12,
   },
-  devButton: {
+  scanButton: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 6,
+    justifyContent: "center",
+    backgroundColor: BagirataColors.primary,
+    borderRadius: 10,
+    paddingVertical: 14,
+    gap: 8,
   },
-  devButtonText: {
+  scanButtonText: {
     color: "#fff",
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: "600",
+  },
+  manualButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    paddingVertical: 14,
+    borderWidth: 2,
+    gap: 8,
+  },
+  manualButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  recentSection: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  splitCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+  },
+  splitCardLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  splitIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  splitInfo: {
+    flex: 1,
+  },
+  splitName: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  splitDate: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  splitTotal: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginLeft: 8,
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 48,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+    paddingHorizontal: 24,
   },
 });

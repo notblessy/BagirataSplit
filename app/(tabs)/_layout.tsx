@@ -1,56 +1,70 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React from "react";
-import { Platform } from "react-native";
 
 import { HapticTab } from "@/components/HapticTab";
-import { IconSymbol } from "@/components/ui/IconSymbol";
-import TabBarBackground from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
 
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
+        tabBarActiveBackgroundColor: Colors[colorScheme ?? "light"].tint + "20",
         headerShown: false,
         tabBarButton: HapticTab,
-        tabBarBackground: TabBarBackground,
-        tabBarStyle: Platform.select({
-          ios: {
-            // Use a transparent background on iOS to show the blur effect
-            position: "absolute",
-          },
-          default: {},
-        }),
+        tabBarStyle: {
+          position: "absolute",
+          bottom: 24,
+          marginHorizontal: 40,
+          height: 64,
+          borderRadius: 32,
+          backgroundColor: isDark ? "#1C1C1E" : "#FFFFFF",
+          borderWidth: 1,
+          borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
+          paddingBottom: 0,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.15,
+          shadowRadius: 16,
+          elevation: 10,
+          overflow: "hidden",
+        },
+        tabBarItemStyle: {
+          borderRadius: 100,
+          margin: 6,
+          overflow: "hidden",
+        },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: "History",
+          title: "Home",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="book.pages.fill" color={color} />
+            <Ionicons size={26} name="home" color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="scan"
+        name="bagirata"
         options={{
-          title: "Scan",
+          title: "Bagirata",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={32} name="doc.text.viewfinder" color={color} />
+            <Ionicons size={26} name="receipt" color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="friends"
+        name="profile"
         options={{
-          title: "Friends",
+          title: "Profile",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="person.2.fill" color={color} />
+            <Ionicons size={26} name="person" color={color} />
           ),
         }}
       />

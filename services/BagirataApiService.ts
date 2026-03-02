@@ -1,15 +1,40 @@
 import axios from "axios";
-import { AssignedItem, Friend, OtherItem } from "../types";
+import * as SecureStore from "expo-secure-store";
+import {
+  AssignedItem,
+  BagirataSummary,
+  CurrencyCode,
+  Friend,
+  GroupDetail,
+  GroupListItem,
+  GroupSummary,
+  OtherItem,
+  Splitted,
+  User,
+} from "../types";
 
 // Base API configuration for Bagirata backend
-const API_BASE_URL = "https://bagirapi.notblessy.com"; // Using the same endpoint as iOS app
+const API_BASE_URL = "https://bagirapi.notblessy.com";
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // Increased timeout for recognition
+  timeout: 30000,
   headers: {
     "Content-Type": "application/json",
   },
+});
+
+// Request interceptor: inject auth token
+apiClient.interceptors.request.use(async (config) => {
+  try {
+    const token = await SecureStore.getItemAsync("auth_token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  } catch {
+    // SecureStore not available (e.g., web)
+  }
+  return config;
 });
 
 // Response interceptor for error handling
@@ -21,9 +46,10 @@ apiClient.interceptors.response.use(
   }
 );
 
-// Types for recognition API
+// ─── Recognition Types ───────────────────────────────────────────────────────
+
 export interface RecognizeRequest {
-  model: string; // The scanned text
+  model: string;
 }
 
 export interface RecognizedItem {
@@ -34,7 +60,7 @@ export interface RecognizedItem {
 
 export interface RecognizedOtherPayment {
   name: string;
-  type: "tax" | "addition" | "discount";
+  type: "tax" | "addition" | "discount" | "deduction";
   amount: number;
   usePercentage: boolean;
 }
@@ -51,7 +77,8 @@ export interface RecognizeResponse {
   };
 }
 
-// Types for save split API
+// ─── Save Split Types ────────────────────────────────────────────────────────
+
 export interface SaveSplitRequest {
   friends: {
     id: string;
@@ -65,7 +92,10 @@ export interface SaveSplitRequest {
       name: string;
       qty: number;
       price: number;
-      subTotal: number;
+      equal?: boolean;
+      friendSubTotal: number;
+      discount?: number;
+      discountIsPercentage?: boolean;
     }[];
     others: {
       id: string;
@@ -87,6 +117,8 @@ export interface SaveSplitRequest {
   createdAt: string;
   grandTotal: number;
   subTotal: number;
+  currencyCode?: string;
+  groupId?: string;
 }
 
 export interface SaveSplitResponse {
@@ -95,20 +127,68 @@ export interface SaveSplitResponse {
   data: string; // Returns the slug
 }
 
+// ─── Auth Types ──────────────────────────────────────────────────────────────
+
+interface AuthResponse {
+  success: boolean;
+  message: string;
+  data: {
+    token: string;
+    user: User;
+  };
+}
+
+interface MeResponse {
+  success: boolean;
+  message: string;
+  data: User;
+}
+
+// ─── API Response Wrapper ────────────────────────────────────────────────────
+
+interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
+}
+
+// ─── Service ─────────────────────────────────────────────────────────────────
+
 export class BagirataApiService {
-  /**
-   * Recognize receipt text and extract items using GPT
-   */
-  static async recognizeReceipt(
-    scannedText: string
-  ): Promise<RecognizeResponse> {
+  // ── Auth ─────────────────────────────────────────────────────────────────
+
+  static async login(email: string, password: string): Promise<AuthResponse> {
+    const response = await apiClient.post<AuthResponse>("/auth/login", { email, password });
+    return response.data;
+  }
+
+  static async register(name: string, email: string, password: string): Promise<AuthResponse> {
+    const response = await apiClient.post<AuthResponse>("/auth/register", { email, password, name });
+    return response.data;
+  }
+
+  static async getMe(): Promise<MeResponse> {
+    const response = await apiClient.get<MeResponse>("/v1/auth/me");
+    return response.data;
+  }
+
+  static async updateMe(updates: { name?: string; avatar?: string }): Promise<MeResponse> {
+    const response = await apiClient.patch<MeResponse>("/v1/auth/me", updates);
+    return response.data;
+  }
+
+  static async deleteMe(): Promise<{ success: boolean; message: string }> {
+    const response = await apiClient.delete("/v1/auth/me");
+    return response.data;
+  }
+
+  // ── Recognition ──────────────────────────────────────────────────────────
+
+  static async recognizeReceipt(scannedText: string): Promise<RecognizeResponse> {
     try {
-      const response = await apiClient.post<RecognizeResponse>(
-        "/v1/recognize",
-        {
-          model: scannedText,
-        }
-      );
+      const response = await apiClient.post<RecognizeResponse>("/v1/recognize", {
+        model: scannedText,
+      });
       return response.data;
     } catch (error: any) {
       console.error("Recognize receipt error:", error);
@@ -116,17 +196,11 @@ export class BagirataApiService {
     }
   }
 
-  /**
-   * Save split bill to backend
-   */
-  static async saveSplit(
-    splitData: SaveSplitRequest
-  ): Promise<SaveSplitResponse> {
+  // ── Splits ───────────────────────────────────────────────────────────────
+
+  static async saveSplit(splitData: SaveSplitRequest): Promise<SaveSplitResponse> {
     try {
-      const response = await apiClient.post<SaveSplitResponse>(
-        "/v1/splits",
-        splitData
-      );
+      const response = await apiClient.post<SaveSplitResponse>("/v1/splits", splitData);
       return response.data;
     } catch (error: any) {
       console.error("Save split error:", error);
@@ -134,9 +208,6 @@ export class BagirataApiService {
     }
   }
 
-  /**
-   * Delete split bill from backend
-   */
   static async deleteSplit(slug: string): Promise<{ success: boolean; message: string }> {
     try {
       const response = await apiClient.delete(`/v1/splits/${slug}`);
@@ -146,9 +217,100 @@ export class BagirataApiService {
       throw new Error("Failed to delete split from backend");
     }
   }
+
+  static async getHistory(
+    page: number = 1,
+    size: number = 10,
+    search?: string
+  ): Promise<ApiResponse<BagirataSummary[]>> {
+    const params: Record<string, any> = { page, size };
+    if (search) params.search = search;
+    const response = await apiClient.get<ApiResponse<BagirataSummary[]>>("/v1/splits", { params });
+    return response.data;
+  }
+
+  static async getSplitBySlug(slug: string): Promise<ApiResponse<Splitted>> {
+    const response = await apiClient.get<ApiResponse<any>>(`/v1/splits/${slug}`);
+    // Convert API response to app Splitted format
+    const data = response.data.data;
+    return {
+      ...response.data,
+      data: {
+        ...data,
+        createdAt: new Date(data.createdAt),
+      },
+    };
+  }
+
+  // ── Groups ───────────────────────────────────────────────────────────────
+
+  static async getGroups(): Promise<ApiResponse<GroupListItem[]>> {
+    const response = await apiClient.get<ApiResponse<GroupListItem[]>>("/v1/groups");
+    return response.data;
+  }
+
+  static async createGroup(data: {
+    name: string;
+    bankName?: string;
+    bankAccount?: string;
+    bankNumber?: string;
+    currencyCode?: string;
+  }): Promise<ApiResponse<GroupListItem>> {
+    const response = await apiClient.post<ApiResponse<GroupListItem>>("/v1/groups", data);
+    return response.data;
+  }
+
+  static async getGroup(id: string): Promise<ApiResponse<GroupDetail>> {
+    const response = await apiClient.get<ApiResponse<GroupDetail>>(`/v1/groups/${id}`);
+    return response.data;
+  }
+
+  static async getGroupSummary(id: string): Promise<ApiResponse<GroupSummary>> {
+    const response = await apiClient.get<ApiResponse<GroupSummary>>(`/v1/groups/${id}/summary`);
+    return response.data;
+  }
+
+  static async updateGroup(
+    id: string,
+    data: {
+      name?: string;
+      bankName?: string;
+      bankAccount?: string;
+      bankNumber?: string;
+      currencyCode?: string;
+      generateShareSlug?: boolean;
+    }
+  ): Promise<ApiResponse<GroupDetail>> {
+    const response = await apiClient.patch<ApiResponse<GroupDetail>>(`/v1/groups/${id}`, data);
+    return response.data;
+  }
+
+  static async deleteGroup(id: string): Promise<{ success: boolean; message: string }> {
+    const response = await apiClient.delete(`/v1/groups/${id}`);
+    return response.data;
+  }
 }
 
-// Helper function to convert app data to backend format
+// ─── Helper Functions ────────────────────────────────────────────────────────
+
+// Helper to calculate item subtotal with discount
+const calcItemSubTotal = (item: AssignedItem): number => {
+  const base = item.qty * item.price;
+  if (!item.discount || item.discount === 0) return base;
+  const discountAmount = item.discountIsPercentage
+    ? (base * item.discount) / 100
+    : item.discount;
+  return base - discountAmount;
+};
+
+const calcItemDiscountAmount = (item: AssignedItem): number => {
+  if (!item.discount || item.discount === 0) return 0;
+  const base = item.qty * item.price;
+  return item.discountIsPercentage
+    ? (base * item.discount) / 100
+    : item.discount;
+};
+
 export const convertToBackendFormat = (
   splitData: {
     id: string;
@@ -156,19 +318,21 @@ export const convertToBackendFormat = (
     items: AssignedItem[];
     otherPayments: OtherItem[];
     createdAt: Date;
+    currency?: CurrencyCode;
   },
   participants: Friend[],
   bankInfo?: {
     bankName: string;
     accountNumber: string;
     accountName: string;
-  }
+  },
+  groupId?: string
 ): SaveSplitRequest => {
   // Calculate totals for each friend
   const friendsData: SaveSplitRequest["friends"] = participants.map(
     (friend) => {
-      const friendItems: any[] = [];
-      const friendOthers: any[] = [];
+      const friendItems: SaveSplitRequest["friends"][0]["items"] = [];
+      const friendOthers: SaveSplitRequest["friends"][0]["others"] = [];
       let subTotal = 0;
       let total = 0;
 
@@ -176,21 +340,27 @@ export const convertToBackendFormat = (
       splitData.items.forEach((item) => {
         const assignment = item.friends.find((f) => f.friendId === friend.id);
         if (assignment) {
-          const itemSubTotal = item.price * assignment.qty;
-          subTotal += itemSubTotal;
+          const itemTotal = calcItemSubTotal(item);
+          const friendPortion = item.equal
+            ? itemTotal / item.friends.length
+            : (assignment.qty / item.qty) * itemTotal;
+          subTotal += friendPortion;
           friendItems.push({
             id: item.id,
             name: item.name,
             qty: assignment.qty,
             price: item.price,
-            subTotal: itemSubTotal,
+            equal: item.equal,
+            friendSubTotal: friendPortion,
+            discount: item.discount || 0,
+            discountIsPercentage: item.discountIsPercentage || false,
           });
         }
       });
 
       // Calculate other payments for this friend
       const totalItemsValue = splitData.items.reduce(
-        (sum, item) => sum + item.price * item.qty,
+        (sum, item) => sum + calcItemSubTotal(item),
         0
       );
       const participantCount = participants.length;
@@ -203,12 +373,12 @@ export const convertToBackendFormat = (
 
         let friendAmount = 0;
         if (other.type === "tax") {
-          // Tax is calculated proportionally based on participant's item total
-          friendAmount = (subTotal * amount) / totalItemsValue;
+          friendAmount = totalItemsValue > 0
+            ? (subTotal * amount) / totalItemsValue
+            : 0;
         } else {
-          // Additions and discounts are split equally among participants
-          friendAmount = amount / participantCount;
-          if (other.type === "discount") {
+          friendAmount = participantCount > 0 ? amount / participantCount : 0;
+          if (other.type === "discount" || other.type === "deduction") {
             friendAmount = -friendAmount;
           }
         }
@@ -242,14 +412,12 @@ export const convertToBackendFormat = (
     }
   );
 
-  // Calculate grand total and subtotal
   const grandTotal = friendsData.reduce((sum, friend) => sum + friend.total, 0);
   const subTotalAmount = friendsData.reduce(
     (sum, friend) => sum + friend.subTotal,
     0
   );
 
-  // Generate a simple slug from name and timestamp
   const slug = `${splitData.name
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "-")}-${Date.now()}`;
@@ -265,10 +433,11 @@ export const convertToBackendFormat = (
     createdAt: splitData.createdAt.toISOString(),
     grandTotal,
     subTotal: subTotalAmount,
+    currencyCode: splitData.currency || "IDR",
+    groupId,
   };
 };
 
-// Helper function to convert backend recognition to app format
 export const convertRecognitionToAppFormat = (
   recognition: RecognizeResponse["data"]
 ): {
@@ -283,6 +452,8 @@ export const convertRecognitionToAppFormat = (
       price: item.price,
       equal: false,
       friends: [],
+      discount: 0,
+      discountIsPercentage: false,
     })),
     otherPayments: recognition.otherPayments.map((other) => ({
       name: other.name,

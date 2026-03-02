@@ -12,23 +12,23 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Colors } from "../constants/Colors";
+import { BagirataColors, Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
 import { BagirataApiService } from "../services/BagirataApiService";
-import { DataService } from "../services/DataService";
 import { DatabaseService } from "../services/DatabaseService";
-import { SplitApiService } from "../services/SplitApiService";
 import { Splitted, SplittedFriend } from "../types";
 import { ThemedText } from "./ThemedText";
 import { ThemedView } from "./ThemedView";
-
+import BagirataAvatar from "./BagirataAvatar";
+import CopyButton from "./CopyButton";
+import ParticipantCard from "./ParticipantCard";
 import BannerAdComponent from "./BannerAd";
 
 interface HistoryDetailPageProps {
   split: Splitted;
   visible: boolean;
   onClose: () => void;
-  onSplitDeleted?: () => void; // Callback when split is deleted
+  onSplitDeleted?: () => void;
 }
 
 export default function HistoryDetailPage({
@@ -42,136 +42,11 @@ export default function HistoryDetailPage({
   const [isLoading, setIsLoading] = useState(false);
 
   const formatCurrency = (amount: number) => {
-    return DataService.formatCurrency(amount);
+    return DatabaseService.formatCurrency(amount, split.currencyCode);
   };
 
   const getTotalAmount = (split: Splitted): number => {
     return split.friends.reduce((sum, friend) => sum + (friend.total || 0), 0);
-  };
-
-  const renderFriendCard = (friend: SplittedFriend) => {
-    return (
-      <View
-        key={friend.id}
-        style={[
-          styles.friendCard,
-          {
-            backgroundColor: colorScheme === "dark" ? "#262626" : "#f8f9fa",
-            borderColor: colorScheme === "dark" ? "#3A3A3C" : "#e0e0e0",
-          },
-        ]}
-      >
-        {/* Friend Header */}
-        <View style={styles.friendHeader}>
-          <View style={styles.friendHeaderLeft}>
-            <View
-              style={[
-                styles.friendAvatar,
-                { backgroundColor: friend.accentColor },
-              ]}
-            >
-              <Text style={styles.friendAvatarText}>
-                {friend.name.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.friendInfo}>
-              <ThemedText type="defaultSemiBold" style={styles.friendName}>
-                {friend.name} {friend.me && "(You)"}
-              </ThemedText>
-              <ThemedText style={styles.friendSubtotal}>
-                Subtotal: {formatCurrency(friend.subTotal)}
-              </ThemedText>
-            </View>
-          </View>
-          <View style={styles.friendTotal}>
-            <ThemedText style={styles.totalLabel}>Total</ThemedText>
-            <ThemedText
-              type="defaultSemiBold"
-              style={[styles.totalAmount, { color: colors.tint }]}
-            >
-              {formatCurrency(friend.total)}
-            </ThemedText>
-          </View>
-        </View>
-
-        {/* Calculation Breakdown */}
-        <View style={styles.breakdownSection}>
-          {/* Show items for this friend */}
-          <ThemedText
-            style={[styles.friendBreakdownTitle, { color: colors.text }]}
-          >
-            Items:
-          </ThemedText>
-          {friend.items && friend.items.length > 0 ? (
-            friend.items.map((item) => (
-              <ThemedText
-                key={item.id}
-                style={[styles.friendItemDetail, { color: colors.text }]}
-              >
-                • {item.name} ({item.qty}x) - {formatCurrency(item.subTotal)}
-              </ThemedText>
-            ))
-          ) : (
-            <ThemedText
-              style={[styles.friendItemDetail, { color: colors.text }]}
-            >
-              • No items assigned
-            </ThemedText>
-          )}
-
-          {/* Show other payments breakdown */}
-          {friend.others && friend.others.length > 0 && (
-            <>
-              <ThemedText
-                style={[
-                  styles.friendBreakdownTitle,
-                  { color: colors.text, marginTop: 8 },
-                ]}
-              >
-                Other Payments:
-              </ThemedText>
-              {friend.others.map((other) => (
-                <ThemedText
-                  key={other.id}
-                  style={[styles.friendItemDetail, { color: colors.text }]}
-                >
-                  • {other.name} (
-                  {other.usePercentage
-                    ? `${((other.amount / friend.subTotal) * 100).toFixed(1)}%`
-                    : formatCurrency(other.price || other.amount)}
-                  ) - +{formatCurrency(other.amount)}
-                </ThemedText>
-              ))}
-            </>
-          )}
-
-          {/* Subtotal line if there are other payments */}
-          {friend.others && friend.others.length > 0 && (
-            <View
-              style={[
-                styles.friendSubtotalLine,
-                {
-                  borderTopColor:
-                    colorScheme === "dark" ? "#3A3A3C" : "#e0e0e0",
-                },
-              ]}
-            >
-              <ThemedText style={styles.friendSubtotalText}>
-                Items Subtotal: {formatCurrency(friend.subTotal)}
-              </ThemedText>
-              <ThemedText
-                style={[
-                  styles.friendSubtotalText,
-                  { color: colors.tint, fontWeight: "600" },
-                ]}
-              >
-                Final Total: {formatCurrency(friend.total)}
-              </ThemedText>
-            </View>
-          )}
-        </View>
-      </View>
-    );
   };
 
   const handleDeleteSplit = () => {
@@ -186,29 +61,23 @@ export default function HistoryDetailPage({
           onPress: async () => {
             setIsLoading(true);
             try {
-              // Delete from local database
-              const deleted = await DataService.deleteSplit(split.id);
-
+              const deleted = await DatabaseService.deleteSplit(split.id);
               if (deleted) {
-                // If split has a slug, try to delete from backend
                 if (split.slug) {
                   try {
                     await BagirataApiService.deleteSplit(split.slug);
-                  } catch (error) {
-                    console.warn("Failed to delete split from backend:", error);
-                    // Don't fail the whole operation if backend deletion fails
+                  } catch {
+                    // Backend deletion is best-effort
                   }
                 }
-
-                // Call the callback to refresh the history list
                 onSplitDeleted?.();
                 onClose();
               } else {
-                throw new Error("Failed to delete split");
+                throw new Error("Failed to delete");
               }
-            } catch (error: any) {
+            } catch (error) {
               console.error("Delete split error:", error);
-              Alert.alert("Error", "Failed to delete split. Please try again.");
+              Alert.alert("Error", "Failed to delete split.");
             } finally {
               setIsLoading(false);
             }
@@ -219,24 +88,14 @@ export default function HistoryDetailPage({
   };
 
   const handleReshareLink = async () => {
-    if (!split.slug) {
-      Alert.alert("Error", "This split doesn't have a share link available.");
+    if (!split.slug && !split.shareUrl) {
+      Alert.alert("Error", "This split doesn't have a share link.");
       return;
     }
 
     setIsLoading(true);
     try {
-      let shareUrl = split.shareUrl;
-
-      // If we have a slug but no shareUrl, generate a new share link
-      if (split.slug && !shareUrl) {
-        const shareResponse = await SplitApiService.generateShare(split.slug);
-        shareUrl = shareResponse.data.share_url;
-
-        // Update the local database with the new share URL
-        await DataService.updateSplitShareInfo(split.id, split.slug, shareUrl);
-      }
-
+      const shareUrl = split.shareUrl;
       if (shareUrl) {
         await Share.share({
           message: `Check out this split bill: ${split.name}\n\nView and pay your share: ${shareUrl}`,
@@ -244,11 +103,11 @@ export default function HistoryDetailPage({
           title: `Split Bill: ${split.name}`,
         });
       } else {
-        throw new Error("Unable to get share URL");
+        throw new Error("No share URL");
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Reshare error:", error);
-      Alert.alert("Error", "Failed to generate share link. Please try again.");
+      Alert.alert("Error", "Failed to share. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -311,7 +170,7 @@ export default function HistoryDetailPage({
                 </ThemedText>
                 <ThemedText
                   type="title"
-                  style={[styles.summaryValue, { color: colors.tint }]}
+                  style={[styles.summaryValue, { color: BagirataColors.primary }]}
                 >
                   {formatCurrency(getTotalAmount(split))}
                 </ThemedText>
@@ -325,19 +184,103 @@ export default function HistoryDetailPage({
             </View>
           </View>
 
-          {/* Friends List */}
+          {/* Bank Info Card */}
+          {(split.bankName || split.bankAccount) && (
+            <View
+              style={[
+                styles.bankCard,
+                {
+                  backgroundColor: colorScheme === "dark" ? "#262626" : "#f8f9fa",
+                  borderColor: colorScheme === "dark" ? "#3A3A3C" : "#e0e0e0",
+                },
+              ]}
+            >
+              <View style={styles.bankHeader}>
+                <Ionicons
+                  name="card-outline"
+                  size={18}
+                  color={BagirataColors.primary}
+                />
+                <Text style={[styles.bankTitle, { color: colors.text }]}>
+                  Bank Transfer Info
+                </Text>
+              </View>
+              {split.bankName && (
+                <View style={styles.bankRow}>
+                  <Text
+                    style={[
+                      styles.bankLabel,
+                      { color: BagirataColors.secondaryText },
+                    ]}
+                  >
+                    Bank
+                  </Text>
+                  <View style={styles.bankValueRow}>
+                    <Text style={[styles.bankValue, { color: colors.text }]}>
+                      {split.bankName}
+                    </Text>
+                  </View>
+                </View>
+              )}
+              {split.bankAccount && (
+                <View style={styles.bankRow}>
+                  <Text
+                    style={[
+                      styles.bankLabel,
+                      { color: BagirataColors.secondaryText },
+                    ]}
+                  >
+                    Account
+                  </Text>
+                  <View style={styles.bankValueRow}>
+                    <Text style={[styles.bankValue, { color: colors.text }]}>
+                      {split.bankAccount}
+                    </Text>
+                    <CopyButton text={split.bankAccount} />
+                  </View>
+                </View>
+              )}
+              {split.bankNumber && (
+                <View style={styles.bankRow}>
+                  <Text
+                    style={[
+                      styles.bankLabel,
+                      { color: BagirataColors.secondaryText },
+                    ]}
+                  >
+                    Number
+                  </Text>
+                  <View style={styles.bankValueRow}>
+                    <Text style={[styles.bankValue, { color: colors.text }]}>
+                      {split.bankNumber}
+                    </Text>
+                    <CopyButton text={split.bankNumber} />
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Participants */}
           <ThemedView style={styles.section}>
             <ThemedText type="subtitle" style={styles.sectionHeader}>
               Split Breakdown
             </ThemedText>
-            {split.friends.map((friend) => renderFriendCard(friend))}
+            {split.friends.map((friend) => (
+              <ParticipantCard
+                key={friend.id}
+                participant={friend}
+                isYou={friend.me}
+                currencyCode={split.currencyCode}
+              />
+            ))}
           </ThemedView>
         </ScrollView>
 
         {/* Actions */}
         <View style={styles.actionsContainer}>
           <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.tint }]}
+            style={[styles.actionButton, { backgroundColor: BagirataColors.primary }]}
             onPress={handleReshareLink}
             disabled={isLoading}
           >
@@ -345,7 +288,12 @@ export default function HistoryDetailPage({
               <ActivityIndicator color="#fff" size="small" />
             ) : (
               <View style={styles.actionButtonContent}>
-                <Ionicons name="share-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Ionicons
+                  name="share-outline"
+                  size={18}
+                  color="#fff"
+                  style={{ marginRight: 8 }}
+                />
                 <ThemedText style={styles.actionButtonText}>
                   Reshare Link
                 </ThemedText>
@@ -353,7 +301,7 @@ export default function HistoryDetailPage({
             )}
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: "#FF3B30" }]}
+            style={[styles.actionButton, { backgroundColor: BagirataColors.dangerRed }]}
             onPress={handleDeleteSplit}
             disabled={isLoading}
           >
@@ -361,7 +309,12 @@ export default function HistoryDetailPage({
               <ActivityIndicator color="#fff" size="small" />
             ) : (
               <View style={styles.actionButtonContent}>
-                <Ionicons name="trash-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Ionicons
+                  name="trash-outline"
+                  size={18}
+                  color="#fff"
+                  style={{ marginRight: 8 }}
+                />
                 <ThemedText style={styles.actionButtonText}>
                   Delete Split
                 </ThemedText>
@@ -370,7 +323,6 @@ export default function HistoryDetailPage({
           </TouchableOpacity>
         </View>
 
-        {/* Banner Ad at bottom */}
         <BannerAdComponent style={styles.bannerAd} />
       </SafeAreaView>
     </Modal>
@@ -418,7 +370,7 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 12,
     marginTop: 16,
-    marginBottom: 24,
+    marginBottom: 16,
     borderWidth: 1,
   },
   summaryRow: {
@@ -437,6 +389,40 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "bold",
   },
+  bankCard: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+  },
+  bankHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  bankTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  bankRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 6,
+  },
+  bankLabel: {
+    fontSize: 13,
+  },
+  bankValueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  bankValue: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
   section: {
     marginBottom: 24,
   },
@@ -445,92 +431,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginBottom: 16,
   },
-  friendCard: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-  },
-  friendHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  friendHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  friendAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  friendAvatarText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  friendInfo: {
-    flex: 1,
-  },
-  friendName: {
-    fontSize: 16,
-    marginBottom: 2,
-  },
-  friendSubtotal: {
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  friendTotal: {
-    alignItems: "flex-end",
-  },
-  totalLabel: {
-    fontSize: 12,
-    opacity: 0.7,
-    marginBottom: 2,
-  },
-  totalAmount: {
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  breakdownSection: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(0,0,0,0.1)",
-  },
-  // Friend breakdown styles for share step
-  friendBreakdownTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginTop: 8,
-    marginBottom: 4,
-    paddingLeft: 0,
-  },
-  friendItemDetail: {
-    fontSize: 14,
-    opacity: 0.8,
-    marginBottom: 4,
-    paddingLeft: 0,
-  },
-  friendSubtotalLine: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    paddingLeft: 0,
-  },
-  friendSubtotalText: {
-    fontSize: 14,
-    marginBottom: 2,
-  },
   bannerAd: {
     paddingVertical: 8,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
   actionsContainer: {
     flexDirection: "row",
@@ -549,7 +452,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
-    marginBottom: 20
+    marginBottom: 20,
   },
   actionButtonContent: {
     flexDirection: "row",
