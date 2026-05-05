@@ -2520,31 +2520,27 @@ export function UnifiedSplitScreen({
       {/* Assignment Sheet */}
       <ActionSheet
         ref={assignmentSheetRef}
-        containerStyle={{
-          backgroundColor: colors.background,
-        }}
-        headerAlwaysVisible={true}
+        snapPoints={[60, 100]}
+        initialSnapIndex={0}
+        backgroundInteractionEnabled={false}
         gestureEnabled={true}
         closeOnPressBack={true}
         onClose={closeAssignmentSheet}
+        containerStyle={{
+          backgroundColor: colors.background,
+        }}
       >
         <View
-          style={[
-            styles.bottomSheetContainer,
-            {
-              backgroundColor: colors.background,
-              maxHeight: 600,
-            },
-          ]}
+          style={{
+            backgroundColor: colors.background,
+            minHeight: 300,
+            paddingBottom: 24,
+          }}
         >
           <SafeAreaView
-            style={[
-              styles.modalContainer,
-              {
-                backgroundColor: colors.background,
-                maxHeight: 600,
-              },
-            ]}
+            style={{
+              backgroundColor: colors.background,
+            }}
           >
             <View
               style={[
@@ -2567,7 +2563,8 @@ export function UnifiedSplitScreen({
             <ScrollView
               style={styles.modalContent}
               keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
             >
               {currentAssignmentItem && (
                 <>
@@ -3892,8 +3889,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     padding: 24,
-    flexShrink: 1, // Allow content to shrink if needed
-    paddingBottom: 100,
+    flex: 1,
+    paddingBottom: 16,
   },
   modalButtons: {
     flexDirection: "row",
