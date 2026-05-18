@@ -33,7 +33,11 @@ import {
 } from "../types";
 import { useInterstitialAd } from "./InterstitialAdManager";
 
-import ActionSheet, { ActionSheetRef } from "react-native-actions-sheet";
+import ActionSheet, {
+  ActionSheetRef,
+  useScrollHandlers,
+} from "react-native-actions-sheet";
+import { NativeViewGestureHandler } from "react-native-gesture-handler";
 
 type FlowStep = "review" | "bank" | "assign" | "share";
 
@@ -123,6 +127,9 @@ export function UnifiedSplitScreen({
   const bankSheetRef = useRef<ActionSheetRef>(null);
   const assignmentSheetRef = useRef<ActionSheetRef>(null);
   const participantSheetRef = useRef<ActionSheetRef>(null);
+
+  // Scroll handlers for nested ScrollViews inside ActionSheets
+  const assignmentScrollHandlers = useScrollHandlers<ScrollView>();
 
   // Modal control functions
   const openAddItemSheet = () => {
@@ -846,7 +853,7 @@ export function UnifiedSplitScreen({
   const updateFriendQuantity = (friendId: string, quantity: number) => {
     setFriendQuantities((prev) => ({
       ...prev,
-      [friendId]: Math.max(0, roundToTwoDecimals(quantity)),
+      [friendId]: Math.max(0, quantity),
     }));
   };
 
@@ -856,7 +863,7 @@ export function UnifiedSplitScreen({
 
   const getRemainingQuantity = () => {
     if (!currentAssignmentItem) return 0;
-    return roundToTwoDecimals(currentAssignmentItem.qty - getTotalAssignedQuantity());
+    return currentAssignmentItem.qty - getTotalAssignedQuantity();
   };
 
   const canAssignItem = () => {
@@ -867,10 +874,9 @@ export function UnifiedSplitScreen({
     );
   };
 
-  // Utility function for rounding to 2 decimal places
-  const roundToTwoDecimals = (num: number) => {
-    return Math.round(num * 100) / 100;
-  };
+  // Display-only formatters — never use these on stored/calculated values
+  const formatQty = (n: number) =>
+    n % 1 === 0 ? n.toString() : parseFloat(n.toFixed(2)).toString();
 
   const assignEqually = () => {
     if (!currentAssignmentItem || selectedParticipants.length === 0) return;
@@ -880,7 +886,7 @@ export function UnifiedSplitScreen({
     const equalShare = currentAssignmentItem.qty / selectedParticipants.length;
 
     selectedParticipants.forEach((participantId) => {
-      newQuantities[participantId] = roundToTwoDecimals(equalShare);
+      newQuantities[participantId] = equalShare;
     });
 
     setSelectedFriends(selectedParticipants);
@@ -924,7 +930,7 @@ export function UnifiedSplitScreen({
                 me: friend?.me || false,
                 accentColor: friend?.accentColor || "#007AFF",
                 qty: assignedQty,
-                subTotal: roundToTwoDecimals(assignedQty * item.price),
+                subTotal: assignedQty * item.price,
                 createdAt: friend?.createdAt || new Date(),
               };
             })
@@ -951,7 +957,7 @@ export function UnifiedSplitScreen({
       return total;
     }, 0);
 
-    return roundToTwoDecimals(total);
+    return total;
   };
 
   const calculateTotal = () => {
@@ -977,10 +983,10 @@ export function UnifiedSplitScreen({
         },
         0
       );
-      return roundToTwoDecimals(itemsTotal + othersTotal);
+      return itemsTotal + othersTotal;
     }
 
-    return roundToTwoDecimals(itemsTotal);
+    return itemsTotal;
   };
 
   const calculateFriendTotalWithOtherPayments = (friendId: string) => {
@@ -1004,7 +1010,7 @@ export function UnifiedSplitScreen({
     // Calculate participant count for equal splitting
     const participantCount = selectedParticipants.length;
 
-    if (participantCount === 0) return roundToTwoDecimals(itemsTotal);
+    if (participantCount === 0) return itemsTotal;
 
     // Apply other payments
     const otherPaymentsTotal = currentSplitData.otherPayments.reduce(
@@ -1031,7 +1037,7 @@ export function UnifiedSplitScreen({
       0
     );
 
-    return roundToTwoDecimals(itemsTotal + otherPaymentsTotal);
+    return itemsTotal + otherPaymentsTotal;
   };
 
   // Bank info functions
@@ -2560,7 +2566,11 @@ export function UnifiedSplitScreen({
               <View style={{ width: 24 }} />
             </View>
 
+            <NativeViewGestureHandler
+              simultaneousHandlers={assignmentScrollHandlers.simultaneousHandlers}
+            >
             <ScrollView
+              {...assignmentScrollHandlers}
               style={styles.modalContent}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={true}
@@ -2569,8 +2579,8 @@ export function UnifiedSplitScreen({
               {currentAssignmentItem && (
                 <>
                   <Text style={[styles.quantityInfo, { color: colors.text }]}>
-                    Available: {currentAssignmentItem.qty} | Remaining:{" "}
-                    {getRemainingQuantity()}
+                    Available: {formatQty(currentAssignmentItem.qty)} | Remaining:{" "}
+                    {formatQty(getRemainingQuantity())}
                   </Text>
 
                   {/* Assign Equally Button */}
@@ -2674,13 +2684,7 @@ export function UnifiedSplitScreen({
                                   { color: colors.text },
                                 ]}
                               >
-                                {(friendQuantities[friend.id] || 0) % 1 === 0
-                                  ? (
-                                      friendQuantities[friend.id] || 0
-                                    ).toString()
-                                  : (friendQuantities[friend.id] || 0).toFixed(
-                                      2
-                                    )}
+                                {formatQty(friendQuantities[friend.id] || 0)}
                               </Text>
                               <TouchableOpacity
                                 style={[
@@ -2778,6 +2782,7 @@ export function UnifiedSplitScreen({
                 </>
               )}
             </ScrollView>
+            </NativeViewGestureHandler>
           </SafeAreaView>
         </View>
       </ActionSheet>
