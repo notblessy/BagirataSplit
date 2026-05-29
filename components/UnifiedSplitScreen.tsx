@@ -9,6 +9,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -56,6 +57,8 @@ export function UnifiedSplitScreen({
   onBack,
   onShare,
 }: UnifiedSplitScreenProps) {
+  const { height: screenHeight } = useWindowDimensions();
+  const sheetContentHeight = screenHeight * 0.6;
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const { userProfile } = useUserProfile();
@@ -1901,32 +1904,15 @@ export function UnifiedSplitScreen({
       {/* Add Item Sheet */}
       <ActionSheet
         ref={addItemSheetRef}
-        containerStyle={{
-          backgroundColor: colors.background,
-        }}
-        headerAlwaysVisible={true}
+        backgroundInteractionEnabled={false}
         gestureEnabled={true}
         closeOnPressBack={true}
         onClose={closeAddItemSheet}
+        indicatorStyle={{ display: "none" }}
+        containerStyle={{ backgroundColor: colors.background }}
       >
-        <View
-          style={[
-            styles.bottomSheetContainer,
-            {
-              backgroundColor: colors.background,
-              maxHeight: 450,
-            },
-          ]}
-        >
-          <SafeAreaView
-            style={[
-              styles.modalContainer,
-              {
-                backgroundColor: colors.background,
-                maxHeight: 450,
-              },
-            ]}
-          >
+        <View style={{ height: sheetContentHeight, backgroundColor: colors.background }}>
+          <View style={{ flex: 1 }}>
             <View
               style={[
                 styles.modalHeader,
@@ -2023,39 +2009,22 @@ export function UnifiedSplitScreen({
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </SafeAreaView>
+          </View>
         </View>
       </ActionSheet>
 
       {/* Add Other Payment Sheet */}
       <ActionSheet
         ref={addOtherSheetRef}
-        containerStyle={{
-          backgroundColor: colors.background,
-        }}
-        headerAlwaysVisible={true}
+        backgroundInteractionEnabled={false}
         gestureEnabled={true}
         closeOnPressBack={true}
         onClose={closeAddOtherSheet}
+        indicatorStyle={{ display: "none" }}
+        containerStyle={{ backgroundColor: colors.background }}
       >
-        <View
-          style={[
-            styles.bottomSheetContainer,
-            {
-              backgroundColor: colors.background,
-              maxHeight: 450,
-            },
-          ]}
-        >
-          <SafeAreaView
-            style={[
-              styles.modalContainer,
-              {
-                backgroundColor: colors.background,
-                maxHeight: 450,
-              },
-            ]}
-          >
+        <View style={{ height: sheetContentHeight, backgroundColor: colors.background }}>
+          <View style={{ flex: 1 }}>
             <View
               style={[
                 styles.modalHeader,
@@ -2293,39 +2262,22 @@ export function UnifiedSplitScreen({
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </SafeAreaView>
+          </View>
         </View>
       </ActionSheet>
 
       {/* Bank Info Sheet */}
       <ActionSheet
         ref={bankSheetRef}
-        containerStyle={{
-          backgroundColor: colors.background,
-        }}
-        headerAlwaysVisible={true}
+        backgroundInteractionEnabled={false}
         gestureEnabled={true}
         closeOnPressBack={true}
         onClose={closeBankSheet}
+        indicatorStyle={{ display: "none" }}
+        containerStyle={{ backgroundColor: colors.background }}
       >
-        <View
-          style={[
-            styles.bottomSheetContainer,
-            {
-              backgroundColor: colors.background,
-              maxHeight: 450,
-            },
-          ]}
-        >
-          <SafeAreaView
-            style={[
-              styles.modalContainer,
-              {
-                backgroundColor: colors.background,
-                maxHeight: 450,
-              },
-            ]}
-          >
+        <View style={{ height: sheetContentHeight, backgroundColor: colors.background }}>
+          <View style={{ flex: 1 }}>
             <View
               style={[
                 styles.modalHeader,
@@ -2519,35 +2471,22 @@ export function UnifiedSplitScreen({
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </SafeAreaView>
+          </View>
         </View>
       </ActionSheet>
 
       {/* Assignment Sheet */}
       <ActionSheet
         ref={assignmentSheetRef}
-        snapPoints={[60, 100]}
-        initialSnapIndex={0}
         backgroundInteractionEnabled={false}
         gestureEnabled={true}
         closeOnPressBack={true}
         onClose={closeAssignmentSheet}
-        containerStyle={{
-          backgroundColor: colors.background,
-        }}
+        indicatorStyle={{ display: "none" }}
+        containerStyle={{ backgroundColor: colors.background }}
       >
-        <View
-          style={{
-            backgroundColor: colors.background,
-            minHeight: 300,
-            paddingBottom: 24,
-          }}
-        >
-          <SafeAreaView
-            style={{
-              backgroundColor: colors.background,
-            }}
-          >
+        <View style={{ height: sheetContentHeight, backgroundColor: colors.background }}>
+          <View style={{ flex: 1 }}>
             <View
               style={[
                 styles.modalHeader,
@@ -2783,36 +2722,22 @@ export function UnifiedSplitScreen({
               )}
             </ScrollView>
             </NativeViewGestureHandler>
-          </SafeAreaView>
+          </View>
         </View>
       </ActionSheet>
 
       {/* Participant Management Sheet */}
       <ActionSheet
         ref={participantSheetRef}
-        containerStyle={{
-          backgroundColor: colors.background,
-        }}
-        headerAlwaysVisible={true}
+        backgroundInteractionEnabled={false}
         gestureEnabled={true}
         closeOnPressBack={true}
         onClose={closeParticipantSheet}
+        indicatorStyle={{ display: "none" }}
+        containerStyle={{ backgroundColor: colors.background }}
       >
-        <View
-          style={[
-            styles.bottomSheetContainer,
-            {
-              backgroundColor: colors.background,
-              maxHeight: 450,
-            },
-          ]}
-        >
-          <View
-            style={{
-              backgroundColor: colors.background,
-              maxHeight: 450,
-            }}
-          >
+        <View style={{ height: sheetContentHeight, backgroundColor: colors.background }}>
+          <View style={{ flex: 1 }}>
             <View
               style={[
                 styles.modalHeader,
@@ -3869,13 +3794,6 @@ const styles = StyleSheet.create({
     zIndex: 1,
     backgroundColor: "transparent",
   },
-  // Modal styles (matching friends.tsx)
-  modalContainer: {
-    flex: 1,
-    justifyContent: "flex-end",
-    minHeight: "40%",
-    maxHeight: "90%",
-  },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -3970,15 +3888,6 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
-  },
-  bottomSheetContainer: {
-    position: "absolute",
-    bottom: 0,
-    width: "100%",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    elevation: 5,
-    maxHeight: "80%",
   },
   // Toggle styles for bank info modal
   toggleSection: {

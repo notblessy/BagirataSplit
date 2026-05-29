@@ -2,13 +2,13 @@
   "expo": {
     "name": "Bagirata",
     "slug": "Bagirata",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "bagirata",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "runtimeVersion": "1.0.5",
+    "runtimeVersion": "1.0.6",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "keepgoing.Bagirata",
@@ -621,7 +621,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "keepgoing.Bagirata",
-      "versionCode": 2,
+      "versionCode": 31,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",

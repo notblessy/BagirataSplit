@@ -6,6 +6,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import ActionSheet, { ActionSheetRef } from "react-native-actions-sheet";
@@ -33,6 +34,8 @@ export default function CreateGroupSheet({
   onSubmit,
   onClose,
 }: CreateGroupSheetProps) {
+  const { height: screenHeight } = useWindowDimensions();
+  const sheetContentHeight = screenHeight * 0.6;
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
@@ -74,18 +77,14 @@ export default function CreateGroupSheet({
   return (
     <ActionSheet
       ref={sheetRef}
-      containerStyle={{ backgroundColor: colors.background }}
-      headerAlwaysVisible={true}
+      backgroundInteractionEnabled={false}
       gestureEnabled={true}
       closeOnPressBack={true}
       onClose={handleClose}
+      indicatorStyle={{ display: "none" }}
+      containerStyle={{ backgroundColor: colors.background }}
     >
-      <View
-        style={[
-          styles.container,
-          { backgroundColor: colors.background },
-        ]}
-      >
+      <View style={{ height: sheetContentHeight, backgroundColor: colors.background }}>
         {/* Header */}
         <View
           style={[
